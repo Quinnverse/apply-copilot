@@ -43,6 +43,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         case "getResumes":
           sendResponse(await api("/api/resumes"));
           return;
+        case "getProfile":
+          sendResponse(await api("/api/profile"));
+          return;
+        case "putProfile":
+          sendResponse(await api("/api/profile", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(msg.profile || {}),
+          }));
+          return;
         case "getQueue":
           sendResponse(await api("/api/queue"));
           return;

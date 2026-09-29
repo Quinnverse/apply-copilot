@@ -21,7 +21,7 @@ SKILL = Path(r"D:/WorkBuddyData/.workbuddy/skills/autumn-recruitment-tracker")
 DL = Path(r"C:/Users/you/Downloads")
 PKG = PROJ / "deploy" / "package"
 
-APP_FILES = ["server.py", "copilot.py", "filler.py", "company_util.py",
+APP_FILES = ["server.py", "local_apply.py", "copilot.py", "filler.py", "company_util.py",
              "assistant_bridge.py", "refresh_queue.py"]
 STATIC_FILES = ["dashboard.html", "assistant.bookmarklet.js"]
 DATA_FILES = ["profile.job.json", "resumes.json", "resume_active.json",

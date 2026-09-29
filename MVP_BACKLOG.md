@@ -1,0 +1,38 @@
+# MVP backlog and minimal change plan
+
+## P0 — Blocking
+
+1. Fresh clone backend cannot start because `apply.py` is an undeclared external import. Provide a narrow local store fallback while keeping the external integration when available.
+2. Fill has no preview or user confirmation. Show detected/mapped counts and explicit checkboxes; write only chosen fields.
+3. Unsafe write reporting: selectors can collide and select values can silently fail. Bind suggestions to scanned elements and verify writes before reporting success.
+
+## P1 — Major friction
+
+1. Make controlled text inputs work with native setters and bubbling events.
+2. Cover safe native radio/checkbox/date cases; leave uncertain options for manual review.
+3. Reduce extension permissions and avoid injecting UI until user opens it on a page.
+4. Clearly distinguish unsupported fields and make rescanning dynamic/multi-step forms simple.
+
+## P2 — Enhancement
+
+Shadow DOM, cross-origin frames, custom dropdown/date picker adapters, better JD capture, profile onboarding and per-site mapping memory.
+
+## P3 — Future / Pro
+
+Semantic mapping and JD-aware answer drafting only for ambiguous/open questions; no automatic submission or mass apply.
+
+## Execution order
+
+Keep `profile.job.json` and existing kit. Fix backend startup, then extension preview/verified fill. Run offline browser regression after P0, add narrow P1 coverage, rerun Golden Path. Do not claim ATS compatibility before live trials.
+
+## Sprint outcome
+
+- P0 1 closed: `local_apply.py` fallback starts a clean checkout and records user-confirmed applications; external skill path remains supported.
+- P0 2 closed: preview, counts, checkboxes and explicit fill action. No write before confirmation.
+- P0 3 closed for native controls: scanned element binding, option verification and failure count. A real Greenhouse false positive led to a conservative long-question guard.
+- P1 1 closed for tested controlled inputs through native setter plus events.
+- P1 2 partial: native radio/month/date supported in narrow cases; custom widgets remain manual.
+- P1 3 partial: unused manifest permissions removed, CORS narrowed and popup HTML injection removed. `<all_urls>` remains and should be reduced before broad distribution.
+- P1 4 partial: manual rescan works and toolbar reinjects after site DOM replacement; multi-step applications are still unverified.
+
+Next blocking work for unassisted distribution: test more ATS and multi-step pages with real user data under consent, add clear handling for Chinese names split across first/last fields, package the local backend/extension setup, and verify actual PDF upload on supported ATS pages. These were deliberately not represented as complete by local/synthetic tests.

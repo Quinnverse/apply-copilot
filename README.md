@@ -1,6 +1,18 @@
 # 网申助手 Application Copilot
 
-一个**半自动、人类在环**的校招网申辅助工具（Python 3.11+，仅标准库）。
+一个**半自动、人类在环**的校招网申辅助工具（Python 3.11+；CLI 使用标准库，后端依赖 `deploy/requirements.txt`）。
+
+## 当前 Browser Extension MVP
+
+先读 [MVP_READINESS_REPORT.md](MVP_READINESS_REPORT.md)、[PRODUCT_AUDIT.md](PRODUCT_AUDIT.md) 和 [EXTENSION_AUDIT.md](EXTENSION_AUDIT.md)。后端可从干净仓库启动：
+
+```bash
+python -m venv .venv
+.venv/Scripts/python -m pip install -r deploy/requirements.txt  # Windows
+.venv/Scripts/python server.py
+```
+
+在 Chrome/Edge 加载 `extension/` 后，点扩展图标填写基础档案。打开网申页，点 🛠 →“填充表单”，先逐项核对建议并勾选，再点“填充勾选字段”。最后检查网页，提交由本人完成。后端默认只监听本机，档案写在本机 `profile.job.json`。本地 HTTP API 限制浏览器跨域来源；如使用油猴脚本从招聘页直连后端，需要显式设置 `AC_ALLOWED_ORIGINS`。
 
 ## 它做什么 / 不做什么
 

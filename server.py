@@ -8,8 +8,8 @@
   * 只在本机 127.0.0.1 监听，不对外网开放。
   * 不代登录、不破解验证码、不自动提交；所有"提交"动作由用户本人完成。
   * 不读取任何账号凭据，不写运行日志，PII 仅留在本地文件。
-  * CORS 放宽为 * 是为了让浏览器扩展（运行在任意公司页面上）能跨域请求本机后端；
-    仅本机运行、仅 127.0.0.1 可达，风险可控。不要用 `--host 0.0.0.0` 暴露到公网。
+  * CORS 允许扩展来源及显式配置的页面来源；普通招聘网页不可直接读取本机档案。
+    不要用 `--host 0.0.0.0` 暴露无令牌服务。
 
 启动：
   python server.py            # 默认 127.0.0.1:8787
@@ -104,11 +104,16 @@ if _apply_env:
 else:
     _skill_dir = (_job.get("paths") or {}).get("autumn_skill_dir", "")
     APPLY_DIR = Path(_skill_dir) / "scripts" if _skill_dir else None
-    APP_JSON = Path(_skill_dir) / "state" / "applications.json" if _skill_dir else None
-    STATE_JSON = Path(_skill_dir) / "state" / "seen_postings.json" if _skill_dir else None
+    APP_JSON = Path(_skill_dir) / "state" / "applications.json" if _skill_dir else DATA_DIR / "applications.json"
+    STATE_JSON = Path(_skill_dir) / "state" / "seen_postings.json" if _skill_dir else DATA_DIR / "seen_postings.json"
 if APPLY_DIR and str(APPLY_DIR) not in sys.path:
     sys.path.insert(0, str(APPLY_DIR))
-import apply as apply_mod  # noqa: E402
+try:
+    import apply as apply_mod  # noqa: E402
+except ModuleNotFoundError as exc:
+    if exc.name != "apply":
+        raise
+    import local_apply as apply_mod  # bundled fallback for a clean checkout
 
 # 预加载档案（fill/match 用）
 PROFILE = copilot.load_json(PROFILE_PATH) if PROFILE_PATH.exists() else {}
@@ -531,7 +536,11 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],          # 仅本机 127.0.0.1 监听；扩展需跨域访问
+    # Extension background requests originate from chrome-extension://<id>.
+    # A wildcard would let any visited web page read an unauthenticated local profile.
+    allow_origins=["http://127.0.0.1:8787", "http://localhost:8787"] +
+                  [x.strip() for x in os.environ.get("AC_ALLOWED_ORIGINS", "").split(",") if x.strip()],
+    allow_origin_regex=r"^(chrome-extension|moz-extension)://[a-zA-Z0-9-]+$",
     allow_methods=["*"],
     allow_headers=["*"],
     allow_credentials=False,
@@ -671,8 +680,8 @@ def api_queue_bind(item_id: str, req: BindReq):
 
 @app.post("/api/mark")
 def api_mark(req: MarkReq):
-    if not TENANT.APP_JSON or not APPLY_DIR:
-        raise HTTPException(500, "未找到 autumn 技能目录，无法写入 applications.json")
+    if not TENANT.APP_JSON:
+        raise HTTPException(500, "未配置 applications.json 路径")
     if not req.company:
         raise HTTPException(400, "company 必填")
     # 外部未传 title：按 company 匹配 seed 拿 role 作默认标题（找不到留空串）

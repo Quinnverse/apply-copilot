@@ -3,7 +3,7 @@
   "name": "网申助手 Copilot",
   "version": "0.1.0",
   "description": "半自动校招网申辅助：推荐简历、自动填表、上传简历、提交后一键记录。不代登录、不破解验证码、不自动提交。",
-  "permissions": ["storage", "tabs", "activeTab", "scripting"],
+  "permissions": ["storage", "tabs"],
   "host_permissions": [
     "http://127.0.0.1:8787/*",
     "http://localhost:8787/*"

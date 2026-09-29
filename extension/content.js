@@ -11,6 +11,7 @@
   const SUCCESS_KW = ["投递成功", "提交成功", "申请已提交", "简历已收到", "投递完成", "您已成功投递", "报名成功", "已成功投递"];
   let successFlagged = false;
   let statusEl = null;
+  let pending = [];
 
   function send(type, extra) {
     return new Promise((res) => chrome.runtime.sendMessage({ type, ...extra }, (r) => res(r || { error: "no response" })));
@@ -29,13 +30,20 @@
 
   // ---- 字段扫描（与 filler.py 思路一致，但跑在真实 DOM 上）----
   function scanFields() {
+    const radioGroups = new Set();
     const els = [...document.querySelectorAll("input,select,textarea")].filter((el) => {
+      if (el.closest("#ac-fab")) return false;
       const t = el.tagName.toLowerCase();
       if (t === "input") {
         const ty = (el.type || "text").toLowerCase();
-        if (["hidden", "submit", "reset", "button", "image", "radio", "checkbox"].includes(ty)) return false;
+        if (["hidden", "submit", "reset", "button", "image", "file", "password"].includes(ty)) return false;
+        if (ty === "radio") {
+          const key = el.name || el.id;
+          if (key && radioGroups.has(key)) return false;
+          if (key) radioGroups.add(key);
+        }
       }
-      return true;
+      return !el.disabled && el.getClientRects().length > 0;
     });
     return els.map((el) => {
       const t = el.tagName.toLowerCase();
@@ -46,46 +54,104 @@
       }
       if (!label) { const pl = el.closest("label"); if (pl) label = pl.textContent.trim(); }
       if (!label) { const p = el.previousElementSibling; if (p && p.tagName === "LABEL") label = p.textContent.trim(); }
-      return {
+      return { el, field: {
         tag: t,
         type: t === "input" ? (el.type || "text") : t,
         id: el.id || "",
         name: el.name || "",
         placeholder: el.placeholder || "",
-        label: label,
-      };
+        label: label || el.getAttribute("aria-label") || "",
+      }};
     });
   }
 
   function setVal(el, v) {
     try {
-      if (el.tagName === "SELECT") el.value = v;
-      else el.value = v;
+      const value = String(v);
+      if (el.tagName === "SELECT") {
+        const option = [...el.options].find(o => o.value === value || o.text.trim() === value);
+        if (!option) return false;
+        el.value = option.value;
+      } else if (el.type === "radio" || el.type === "checkbox") {
+        if (el.type === "checkbox" && !/^(true|yes|是|1)$/i.test(value)) return false;
+        let target = el;
+        if (el.type === "radio") {
+          const group = el.name ? [...document.querySelectorAll('input[type="radio"]')].filter(x => x.name === el.name) : [el];
+          target = group.find(x => {
+            const label = (x.labels && [...x.labels].map(y => y.textContent).join(" ")) || x.getAttribute("aria-label") || "";
+            return x.value === value || label.trim() === value;
+          });
+          if (!target) return false;
+        }
+        target.checked = true;
+        el = target;
+      } else {
+        if (el.type === "date" && !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+        if (el.type === "month" && !/^\d{4}-\d{2}$/.test(value)) return false;
+        const setter = Object.getOwnPropertyDescriptor(
+          el.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, "value").set;
+        setter.call(el, value);
+      }
       el.dispatchEvent(new Event("input", { bubbles: true }));
       el.dispatchEvent(new Event("change", { bubbles: true }));
+      const ok = el.type === "radio" || el.type === "checkbox" ? el.checked : el.value === value || el.tagName === "SELECT";
+      if (!ok) return false;
       el.style.backgroundColor = "#e8f3ff";
-    } catch (e) {}
+      return true;
+    } catch (e) { return false; }
   }
-  function applyPayload(payload) {
+  function applyPayload() {
     let filled = 0, missed = 0;
-    payload.forEach((p) => {
-      if (!p.selector) return;
-      const el = document.querySelector(p.selector);
-      if (!el) { missed++; return; }
-      if (p.confidence >= 0.5 && p.value) { setVal(el, p.value); filled++; }
+    pending.forEach(({el, p, checkbox}) => {
+      if (!checkbox.checked || !el.isConnected) return;
+      if (setVal(el, p.value)) filled++;
       else { el.style.border = "2px solid #e74c3c"; missed++; }
     });
-    status("已填充 " + filled + " 个，未命中 " + missed + " 个（红框需手填）");
+    status("已填充 " + filled + " 个，写入失败 " + missed + " 个。请检查后自行提交。");
+    rootReview().hidden = true;
+  }
+
+  function rootReview() { return document.getElementById("ac-review"); }
+
+  function showReview(scanned, payload) {
+    const review = rootReview();
+    review.replaceChildren();
+    pending = [];
+    let reliable = 0, confirm = 0, manual = 0;
+    payload.forEach((p, i) => {
+      const item = scanned[i];
+      if (!item) return;
+      const value = String(p.value || "").trim();
+      const usable = p.confidence >= 0.5 && value && !/^\[(待补充|敏感)/.test(value);
+      const category = !usable ? "需手填" : p.confidence >= 0.8 ? "可填写" : "需确认";
+      if (!usable) manual++; else if (p.confidence >= 0.8) reliable++; else confirm++;
+      const row = document.createElement("label");
+      row.className = "ac-row";
+      const check = document.createElement("input"); check.type = "checkbox";
+      check.checked = !!usable; check.disabled = !usable;
+      const caption = document.createElement("span");
+      caption.textContent = `${category} · ${p.label || item.field.label || item.field.name || "未命名"} → ${usable ? value : "由你填写"}`;
+      row.append(check, caption); review.appendChild(row);
+      if (usable) pending.push({el:item.el, p, checkbox:check});
+    });
+    const heading = document.createElement("div");
+    heading.textContent = `发现 ${scanned.length} 个字段：${reliable} 个可填写，${confirm} 个需确认，${manual} 个需手填`;
+    review.prepend(heading);
+    const button = document.createElement("button");
+    button.className = "act"; button.textContent = "填充勾选字段";
+    button.onclick = applyPayload; review.appendChild(button);
+    review.hidden = false;
+    status("请核对每个建议，再填充勾选字段。");
   }
 
   async function doFill() {
-    const fields = scanFields();
-    if (!fields.length) { status("未识别到可填字段"); return; }
+    const scanned = scanFields();
+    if (!scanned.length) { status("未识别到可填字段；请检查 iframe 或稍后重试"); return; }
     const s = await getStore("currentTarget");
     const jd = (s.currentTarget && s.currentTarget.jd) || null;
-    const r = await send("fill", { fields, jd });
+    const r = await send("fill", { fields: scanned.map(x => x.field), jd });
     if (r.error) { status("填充失败：" + r.error); return; }
-    applyPayload(r.json.payload || []);
+    showReview(scanned, r.json.payload || []);
   }
 
   async function uploadResume() {
@@ -147,12 +213,13 @@
     const css = `
       #ac-fab{position:fixed;right:14px;bottom:14px;z-index:2147483647;font-family:-apple-system,'PingFang SC',sans-serif}
       #ac-fab .fab{width:46px;height:46px;border-radius:50%;background:#185FA5;color:#fff;border:none;font-size:22px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.3)}
-      #ac-fab .panel{display:none;position:absolute;right:0;bottom:56px;width:230px;background:#fff;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.25);padding:12px;color:#1f2329}
+      #ac-fab .panel{display:none;position:absolute;right:0;bottom:56px;width:330px;max-height:70vh;overflow:auto;background:#fff;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.25);padding:12px;color:#1f2329}
       #ac-fab .panel.open{display:block}
       #ac-fab button.act{display:block;width:100%;margin:5px 0;background:#185FA5;color:#fff;border:none;border-radius:8px;padding:9px;font-size:13px;font-weight:600;cursor:pointer}
       #ac-fab button.act.rec{background:#1F7A4D}
       #ac-fab button.act.up{background:#d98210}
       #ac-fab .st{font-size:11.5px;color:#5f6368;margin-top:6px;line-height:1.5;min-height:16px}
+      #ac-fab #ac-review[hidden]{display:none}#ac-fab .ac-row{display:flex;gap:6px;padding:5px 0;font-size:11px;line-height:1.3;overflow-wrap:anywhere}
       #ac-fab .act.ac-pulse{animation:acp 1s infinite}@keyframes acp{0%{box-shadow:0 0 0 0 rgba(31,122,77,.6)}70%{box-shadow:0 0 0 10px rgba(31,122,77,0)}100%{box-shadow:0 0 0 0 rgba(31,122,77,0)}}`;
     const style = document.createElement("style"); style.textContent = css; document.head.appendChild(style);
 
@@ -161,6 +228,7 @@
     root.innerHTML = `
       <div class="panel" id="ac-panel">
         <button class="act" id="ac-fill">① 填充表单</button>
+        <div id="ac-review" hidden></div>
         <button class="act up" id="ac-up">② 上传推荐简历</button>
         <button class="act rec" id="ac-record">③ 记录投递</button>
         <div class="st" id="ac-st"></div>
@@ -184,7 +252,7 @@
   function boot() {
     inject();
     checkSuccess();
-    const mo = new MutationObserver(() => checkSuccess());
+    const mo = new MutationObserver(() => { if (!document.getElementById("ac-fab")) inject(); checkSuccess(); });
     mo.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
   }
 
