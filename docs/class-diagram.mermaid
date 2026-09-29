@@ -1,0 +1,103 @@
+classDiagram
+  class DesktopApp {
+    +str SERVER_URL
+    +dict windows
+    +TabManager tabs
+    +DesktopAPI api
+    +start()
+    +_ensure_server()
+  }
+  class TabManager {
+    +dict tabs
+    +str active_tab
+    +new_tab(url) Window
+    +close_tab(id)
+    +switch_tab(id)
+  }
+  class DesktopAPI {
+    +new_tab(url)
+    +switch_tab(id)
+    +close_tab(id)
+    +fill_current()
+    +open_dashboard()
+    +regenerate()
+    +research(cat, keywords)
+    +get_inbox()
+    +adopt(items)
+    +set_active_resume(rid)
+    +bind_resume(row_id, rid)
+  }
+  class InjectionBridge {
+    +SCAN_JS : str
+    +FAB_JS : str
+    +scan_fields(window) list
+    +build_payload(fields, profile)
+    +inject_fab(window)
+    +fill(window, payload)
+  }
+  class QueueService {
+    +merge_queue() list
+    +set_status(id, status)
+    +bind_resume(id, rid)
+    +import_items(items)
+  }
+  class ResearchService {
+    +create_request(cat, keywords) request_id
+    +write_result(request_id, items)
+    +get_done() list
+  }
+  class ResumeService {
+    +get_active() str
+    +set_active(rid)
+    +list_resumes() list
+  }
+  class RegenerateService {
+    +run() int
+  }
+  class QueueItem {
+    +str id
+    +str company
+    +str cat
+    +str role
+    +str sal
+    +str loc
+    +str deadline
+    +str urg
+    +str ltype
+    +str url
+    +str status
+    +str resume_id
+    +str deadline_date
+    +int days_left
+    +str countdown
+  }
+  class ResearchRequest {
+    +str request_id
+    +str cat
+    +str keywords
+    +str status
+    +str created_at
+    +list~ResearchItem~ items
+  }
+  class ResearchItem {
+    +str company
+    +str role
+    +str url
+    +str source
+    +str ltype
+  }
+  class ActiveResume {
+    +str active_resume_id
+  }
+
+  DesktopApp *-- TabManager
+  DesktopApp *-- DesktopAPI
+  DesktopApp ..> InjectionBridge : uses
+  DesktopAPI ..> QueueService
+  DesktopAPI ..> ResearchService
+  DesktopAPI ..> ResumeService
+  DesktopAPI ..> RegenerateService
+  DesktopAPI ..> InjectionBridge
+  QueueService ..> QueueItem
+  ResearchService ..> ResearchRequest
+  ResearchRequest o-- ResearchItem

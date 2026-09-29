@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>网申助手 · 投递队列（状态化）</title>
+<style>
+*{box-sizing:border-box}
+body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;background:#f5f7fa;color:#1f2329;margin:0;padding:24px}
+h1{font-size:24px;margin:0 0 4px}
+.sub{color:#5f6368;font-size:14px;margin-bottom:8px}
+.install{background:#eafaf0;border:1px solid #b6e2c6;color:#1d5b39;border-radius:10px;padding:12px 16px;font-size:13px;margin:10px 0 14px;line-height:1.7}
+.install p{margin:6px 0}
+.install .bm{display:inline-block;background:#185FA5;color:#fff!important;text-decoration:none;padding:5px 12px;border-radius:8px;font-weight:700;cursor:grab}
+.install .bmhint{color:#3a7a55;font-size:12px}
+.tip{background:#eaf3ff;border:1px solid #bcd9ff;color:#1c4f8a;border-radius:8px;padding:10px 14px;font-size:13px;margin:10px 0 16px;line-height:1.6}
+.tip b{color:#11487f}
+.stat{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.box{background:#fff;border-radius:10px;padding:9px 15px;box-shadow:0 1px 3px rgba(0,0,0,.08);min-width:92px}
+.box .n{font-size:20px;font-weight:700}.box .l{font-size:12px;color:#5f6368}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.fbtn{background:#fff;border:1.5px solid #888;color:#444;border-radius:20px;padding:6px 14px;font-size:13px;cursor:pointer}
+.fbtn.active{background:#333;color:#fff;border-color:#333}
+.match{background:#fff;border-radius:12px;padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:16px}
+.match textarea{width:100%;min-height:70px;border:1px solid #d6dbe3;border-radius:8px;padding:8px 10px;font-size:13px;font-family:inherit;resize:vertical}
+.match .row{display:flex;gap:10px;align-items:center;margin-top:8px}
+.btn{background:#185FA5;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block}
+.btn:hover{opacity:.9}
+.btn.green{background:#1F7A4D}.btn.gray{background:#8a93a0}.btn.alt{background:#d98210}
+.matchout{margin-top:10px;font-size:13px;padding:10px 12px;border-radius:8px;background:#f0f7ff;display:none}
+table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);font-size:13px}
+th,td{text-align:left;padding:9px 11px;border-top:1px solid #eef1f5;vertical-align:top}
+th{background:#f7f9fc;color:#666;font-weight:600;font-size:12px;position:sticky;top:0}
+.badge{display:inline-block;font-size:11px;padding:2px 9px;border-radius:10px;color:#fff;font-weight:600}
+.badge.未投{background:#9aa3af}.badge.进行中{background:#185FA5}.badge.已记录{background:#1F7A4D}
+.badge.已投{background:#d98210}.badge.笔试{background:#7A3FB5}.badge.面试{background:#0E8A8A}
+.urg{font-weight:700;font-size:12px}
+.actions button{font-size:11px;padding:4px 9px;border-radius:6px;border:1px solid #cfd6df;background:#fff;cursor:pointer;margin:2px 2px 0 0}
+.actions button.go{background:#185FA5;color:#fff;border-color:#185FA5}
+.actions button.rec{background:#1F7A4D;color:#fff;border-color:#1F7A4D}
+.actions button.doing{background:#eaf3ff;color:#11487f;border-color:#bcd9ff}
+.actions button.reset{background:#fff;color:#888}
+.schip{font-size:11px;padding:3px 8px;border-radius:14px;border:1px solid #cfd6df;background:#fff;cursor:pointer;margin:1px}
+.schip[style]{font-weight:600}
+.rsel{font-size:12px;padding:3px 6px;border-radius:6px;border:1px solid #cfd6df;background:#fff;max-width:140px}
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:99}
+.toast.show{opacity:.95}
+.foot{margin-top:22px;font-size:12.5px;color:#5f6368;background:#fff;border-radius:10px;padding:14px;line-height:1.8}
+code{background:#eef;padding:1px 5px;border-radius:4px}
+/* 顶栏 / 标签页 */
+.topbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:#fff;border-radius:10px;padding:10px 14px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:14px}
+.topbar label{font-size:13px;color:#5f6368}
+.topbar select{padding:5px 8px;border-radius:7px;border:1px solid #cfd6df;font-size:13px}
+.tabs{display:flex;gap:8px;margin-bottom:14px}
+.tab{background:#fff;border:1.5px solid #bcc4cf;color:#444;border-radius:8px 8px 0 0;padding:8px 18px;font-size:14px;font-weight:600;cursor:pointer}
+.tab.active{background:#185FA5;color:#fff;border-color:#185FA5}
+.panel{display:none}
+.env{font-size:12px;color:#888;margin-left:auto}
+/* 侧边栏紧凑模式（桌面壳左栏，?sidebar=1） */
+body.sb{padding:12px}
+body.sb h1{font-size:17px}
+body.sb .install,body.sb .foot{display:none}
+body.sb .sub{font-size:11.5px}
+body.sb table{font-size:12px}
+body.sb th,body.sb td{padding:6px 7px}
+body.sb .rsel{max-width:110px}
+body.sb .actions button{font-size:10.5px;padding:3px 6px}
+/* 推荐简历确认弹层 */
+#acm .btn{flex:1}
+</style>
+</head>
+<body>
+<h1>网申助手 · 投递队列</h1>
+<div class="sub">状态化清单：未投 / 进行中 / 已投 / 笔试 / 面试 / 已记录（已记录来自投递库 applications.json）。本页由本地后端 <code>http://127.0.0.1:8787</code> 提供。</div>
+
+<div class="install" id="installCard">
+  <b>🧩 一步安装助手（油猴脚本版）</b>
+  <p>浏览器装 <a href="https://www.tampermonkey.net/" target="_blank" rel="noopener" style="color:#185FA5;font-weight:700">Tampermonkey</a> 后，导入项目根目录的 <code>copilot.user.js</code>。之后打开任意已配置公司的官网投递页，右下角自动出现 🛠 助手：<b>自动填表 · 自动挂简历 · 成功后自动记账</b>（自动提交默认关闭，提交永远由你本人点）。</p>
+  <p class="bmhint">未命中公司也会静默退出，不干扰普通网页；可用油猴菜单「在此站点启用助手」手动开启。</p>
+</div>
+
+<div class="tip"><b>用法：</b>① 选好当前简历；② 点公司行的「投」或「自动走单」开官网新标签页（油猴助手自动填充/挂附件）；③ 检查红框字段补齐后<b>本人点提交</b>；④ 投递成功页会被自动侦测并记账（也可点浮标「② 记录已投」兜底）。</div>
+
+<div class="topbar">
+  <label>当前简历：</label>
+  <select id="resumeSel" onchange="onResumeChange()"></select>
+  <button class="btn alt" onclick="regenerate()">↻ 按投递情况重生成清单</button>
+  <button class="btn green" onclick="autoWalk()">🚀 自动走单</button>
+  <button class="btn gray" onclick="refreshQueue()">🔄 刷新清单（合并调研回写）</button>
+  <span class="env" id="envTag"></span>
+</div>
+
+<div class="tabs">
+  <button class="tab active" data-t="queue" onclick="showTab('queue')">投递队列</button>
+  <button class="tab" data-t="record" onclick="showTab('record')">记录管理</button>
+  <button class="tab" data-t="more" onclick="showTab('more')">生成更多</button>
+</div>
+
+<!-- 投递队列 -->
+<div class="panel" id="panel-queue" style="display:block">
+  <div class="stat" id="stat"></div>
+
+  <div class="match">
+    <b>📑 简历匹配（粘贴 JD 文本）</b>
+    <textarea id="jd" placeholder="把岗位 JD 粘进来，点匹配看推荐投哪份简历…"></textarea>
+    <div class="row">
+      <button class="btn" onclick="doMatch()">匹配简历</button>
+      <span id="matchmeta" style="color:#5f6368;font-size:12px"></span>
+    </div>
+    <div class="matchout" id="matchout"></div>
+  </div>
+
+  <div class="bar" id="filters"></div>
+
+  <table>
+  <thead><tr><th>公司</th><th>类别</th><th>方向</th><th>城市</th><th>截止</th><th>紧急度</th><th>状态</th><th>用简历</th><th>操作</th></tr></thead>
+  <tbody id="rows"></tbody>
+  </table>
+</div>
+
+<!-- 记录管理 -->
+<div class="panel" id="panel-record">
+  <div class="sub" style="margin-bottom:10px">状态机：<b>未投 → 进行中 → 已投 → 笔试 → 面试</b>。点对应按钮直接设定；截止倒计时 ≤7 天或含「紧急/截止」标红。提交成功后点「记录入库」写入投递库。</div>
+  <table>
+  <thead><tr><th>公司</th><th>类别</th><th>方向</th><th>城市</th><th>截止倒计时</th><th>状态</th><th>操作</th></tr></thead>
+  <tbody id="recRows"></tbody>
+  </table>
+</div>
+
+<!-- 生成更多 -->
+<div class="panel" id="panel-more">
+  <div class="match">
+    <b>🔍 生成更多岗位（调研入箱 → AI 回写）</b>
+    <div class="row">
+      <select id="rcat" style="padding:6px 8px;border-radius:7px;border:1px solid #cfd6df;font-size:13px">
+        <option value="">（不限类别）</option>
+      </select>
+      <input id="rkw" placeholder="关键词，如：具身智能 / 视频生成 / 量化" style="flex:1;padding:6px 10px;border-radius:7px;border:1px solid #cfd6df;font-size:13px">
+      <button class="btn" onclick="submitResearch()">提交调研</button>
+    </div>
+    <div class="sub" style="margin-top:6px;color:#5f6368">提交后 AI（WorkBuddy）会回写匹配岗位到下方，每条可「采纳」（进入队列）或「忽略」。</div>
+  </div>
+  <div id="suggList"><div style="color:#888;font-size:13px;padding:8px 0">暂无 AI 回写岗位。提交调研后 AI 会回写到这里。</div></div>
+</div>
+
+<div class="foot">
+<b>扩展联动：</b>本页与浏览器扩展共用同一后端。在扩展 popup 里选「当前目标公司」后打开网申页，扩展可<b>一键填充表单 / 上传推荐简历 / 检测提交成功页并弹出记录按钮</b>。<br>
+<b>注意：</b>BOSS/猎聘 薪资为公开爆料仅供参考；本表未含已排除的央国企/华为/小米/银行。所有 PII 仅留本地。本工具<b>不代登录、不破解验证码、不自动提交</b>。
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ---- 后端地址 + 访问令牌（localStorage 持久化）----
+// 默认后端 = 当前域名（服务器部署时留空即可；本地文件打开时填 http://127.0.0.1:8787）。
+// 本地后端未设置 AC_TOKEN 时传空令牌即可，不报错；401 时提示并重弹输入。
+let API = localStorage.getItem('ac:backend') || '';       // '' = 同源
+let TOKEN = localStorage.getItem('ac:token') || '';
+function apiFetch(url, opts){
+  opts = opts || {};
+  opts.headers = Object.assign({'X-AC-Token': TOKEN}, opts.headers || {});
+  return fetch(url, opts).then(function(r){
+    if(r.status === 401){ toast('访问令牌缺失或不正确，请重新配置'); promptConfig(true); }
+    return r;
+  });
+}
+function promptConfig(force){
+  if(!force && localStorage.getItem('ac:configured')) return;
+  var bk = prompt('后端地址（留空 = 当前域名；本地后端填 http://127.0.0.1:8787）',
+                  localStorage.getItem('ac:backend') || location.origin);
+  if(bk === null) return;
+  var tk = prompt('访问令牌（本地无令牌模式留空即可）', localStorage.getItem('ac:token') || '');
+  if(tk === null) return;
+  API = bk.trim().replace(/\/+$/,'');
+  if(API === location.origin) API = '';   // 与默认同源时存空串
+  TOKEN = tk.trim();
+  try{
+    localStorage.setItem('ac:backend', API);
+    localStorage.setItem('ac:token', TOKEN);
+    localStorage.setItem('ac:configured', '1');
+  }catch(e){}
+  toast('已保存后端配置');
+  loadMeta(); load();
+}
+
+let ITEMS = [], CATS = [], RESUMES = [], ACTIVE = '', SUGG = [], POLL_TIMER = null;
+// 油猴版：不再依赖 pywebview / Qt bridge，直接开新标签页 + 油猴脚本接管填充
+const WALK = {list: [], idx: 0, active: false};   // 自动走单状态
+if(location.search.indexOf('sidebar=1') >= 0) document.body.classList.add('sb');
+
+function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function enc(s){ return encodeURIComponent(s==null?'':String(s)); }
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200);}
+const urgLabel={urgent:'🔴 紧急',near:'🟠 较紧',open:'🟢 开放',expired:'⚪ 已过期'};
+const urgColor={urgent:'#c0392b',near:'#d98210',open:'#1F7A4D',expired:'#9aa3af'};
+const catColor={'必补大厂':'#185FA5','具身智驾':'#7A3FB5','中小厂-具身':'#1E8A6B','中小厂-大模型Infra':'#B8860B','量化私募':'#C0392B','智驾中厂':'#0E8A8A','AI芯片':'#8a5a00','互联网中厂':'#5566C0'};
+const STATUS_ORDER=['未投','进行中','已投','笔试','面试'];
+
+// 供桌面壳注入的助手回调：重生成/采纳后刷新
+window.__reloadQueue = load;
+
+document.getElementById('envTag').textContent = '🐵 油猴脚本版（Tampermonkey 装好 copilot.user.js 后官网自动填充）';
+
+async function loadMeta(){
+  try{
+    const [rj, aj] = await Promise.all([apiFetch(API+'/api/resumes').then(r=>r.json()), apiFetch(API+'/api/resume/active').then(r=>r.json())]);
+    RESUMES = rj.resumes||[];
+    ACTIVE = aj.active || (RESUMES[0]&&RESUMES[0].id) || '';
+    const sel=document.getElementById('resumeSel');
+    sel.innerHTML = RESUMES.map(r=>`<option value="${enc(r.id)}">${esc(r.name)}</option>`).join('') || '<option value="">（无简历）</option>';
+    sel.value = ACTIVE;
+    const rcat=document.getElementById('rcat');
+    CATS.forEach(c=>{ const o=document.createElement('option'); o.value=c; o.textContent=c; rcat.appendChild(o); });
+  }catch(e){}
+}
+function onResumeChange(){
+  ACTIVE=document.getElementById('resumeSel').value;
+  apiFetch(API+'/api/resume/active',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({active:ACTIVE})})
+    .then(()=>{toast('当前简历：'+ACTIVE); renderRows();}).catch(()=>toast('写入激活简历失败'));
+}
+
+async function load(){
+  const r = await apiFetch(API+'/api/queue'); const j = await r.json();
+  ITEMS = j.items.filter(i=>!i.sugg);   // 待采纳建议由「生成更多」面板展示，不入主表避免重复
+  CATS = [...new Set(ITEMS.map(i=>i.cat))];
+  renderStat(); renderFilters(); renderRows(); renderRecord();
+}
+function getItem(id){ return ITEMS.find(i=>i.id===id); }
+
+function renderStat(){
+  const c={未投:0,进行中:0,已投:0,笔试:0,面试:0,已记录:0};
+  ITEMS.forEach(i=>c[i.status]=(c[i.status]||0)+1);
+  document.getElementById('stat').innerHTML =
+    `<div class="box"><div class="n" style="color:#185FA5">${ITEMS.length}</div><div class="l">总计</div></div>`+
+    `<div class="box"><div class="n" style="color:#9aa3af">${c.未投||0}</div><div class="l">未投</div></div>`+
+    `<div class="box"><div class="n" style="color:#185FA5">${c.进行中||0}</div><div class="l">进行中</div></div>`+
+    `<div class="box"><div class="n" style="color:#d98210">${c.已投||0}</div><div class="l">已投</div></div>`+
+    `<div class="box"><div class="n" style="color:#7A3FB5">${c.笔试||0}</div><div class="l">笔试</div></div>`+
+    `<div class="box"><div class="n" style="color:#0E8A8A">${c.面试||0}</div><div class="l">面试</div></div>`+
+    `<div class="box"><div class="n" style="color:#1F7A4D">${c.已记录||0}</div><div class="l">已记录</div></div>`;
+}
+function renderFilters(){
+  const f=document.getElementById('filters');
+  f.innerHTML = CATS.map(t=>`<button class="fbtn" data-cat="${enc(t)}" style="border-color:${catColor[t]||'#888'}" onclick="filterCat('${enc(t)}',this)">${esc(t)}</button>`).join('')
+    + `<button class="fbtn active" onclick="filterCat('all',this)">全部</button>`;
+}
+function filterCat(t,el){
+  document.querySelectorAll('#rows tr, #recRows tr').forEach(r=>{r.style.display=(t==='all'||r.dataset.cat===t)?'':'none';});
+  document.querySelectorAll('.fbtn').forEach(b=>b.classList.remove('active'));
+  if(el) el.classList.add('active');
+}
+function resumeSelect(id){
+  const it=getItem(id);
+  const cur = (it && it.resume_id) || ACTIVE;   // 行级绑定优先，否则用激活简历
+  return `<select class="rsel" id="rsel-${enc(id)}" onchange="bindResume('${enc(id)}', this.value)">`+
+    RESUMES.map(r=>`<option value="${enc(r.id)}"${r.id===cur?' selected':''}>${esc(r.name)}</option>`).join('')+`</select>`;
+}
+async function bindResume(id, rid){
+  id=decodeURIComponent(id);
+  await apiFetch(API+`/api/queue/${enc(id)}/bind`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({resume_id:rid})});
+  const it=getItem(id); if(it) it.resume_id=rid;   // 更新内存，后续刷新保持预设
+  toast('本行简历绑定：'+rid);
+}
+function renderRows(){
+  const tb=document.getElementById('rows');
+  tb.innerHTML = ITEMS.map(i=>{
+    const c=catColor[i.cat]||'#888';
+    const bt = i.ltype==='官网' ? '官网投递 ↗' : 'BOSS 搜索 ↗';
+    const recTitles = (i.recorded_titles||[]).map(t=>`${t.title}（${t.resume_version||'未注版本'}·${t.stage}）`).join('；');
+    return `<tr data-cat="${enc(i.cat)}">
+<td style="font-weight:600">${esc(i.company)}</td>
+<td><span style="background:${c};color:#fff;font-size:11px;padding:2px 8px;border-radius:10px">${esc(i.cat)}</span></td>
+<td>${esc(i.role)}</td>
+<td style="font-size:12px;color:#555">${esc(i.loc)}</td>
+<td style="font-size:12px;color:#555">${esc(i.deadline)}</td>
+<td class="urg" style="color:${urgColor[i.urg]}">${urgLabel[i.urg]||''}</td>
+<td><span class="badge ${i.status}">${i.status}</span>${recTitles?`<div style="font-size:11px;color:#1F7A4D;margin-top:3px">${esc(recTitles)}</div>`:''}</td>
+<td>${resumeSelect(i.id)}</td>
+<td class="actions">
+<button class="rec" onclick="quickApply('${enc(i.id)}','${enc(i.url)}','${enc(i.company)}')">投</button>
+<button class="go" onclick="openSiteBtn('${enc(i.id)}','${enc(i.url)}','${enc(i.company)}')">${bt}</button>
+<button class="doing" onclick="setStatus('${enc(i.id)}','进行中')">进行中</button>
+<button class="reset" onclick="setStatus('${enc(i.id)}','未投')">重置</button>
+</td></tr>`;
+  }).join('');
+}
+async function openSiteBtn(id,url,company){
+  // id/url/company 已是 encodeURIComponent 后的字符串
+  url=decodeURIComponent(url); company=decodeURIComponent(company);
+  const it=getItem(decodeURIComponent(id));
+  const role=it?it.role:'', cat=it?it.cat:'';
+  // ① 助手先推荐简历 → ② 用户确认 → ③ 打开页面注入填充
+  try{
+    const rec=await apiFetch(API+`/api/recommend?company=${enc(company)}&role=${enc(role)}&cat=${enc(cat)}`).then(r=>r.json());
+    showResumeConfirm(rec, id, url, company);
+    return;
+  }catch(e){ /* 推荐失败则直接按当前激活简历打开 */ }
+  openSite(url, ACTIVE, company);
+}
+// 一键「投」：不做推荐弹层，直接开新标签页（油猴脚本会自动拉上下文填表），
+// 同时把该行置为「进行中」
+function quickApply(id,url,company){
+  id=decodeURIComponent(id); url=decodeURIComponent(url); company=decodeURIComponent(company);
+  apiFetch(API+`/api/queue/${enc(id)}/status`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'进行中'})}).catch(()=>{});
+  toast('已打开：'+company+'（油猴助手会自动填表）');
+  window.open(url, '_blank', 'noopener');
+}
+function showResumeConfirm(rec,id,url,company){
+  let m=document.getElementById('acm'); if(m) m.remove();
+  const cands=rec.candidates||[];
+  m=document.createElement('div'); m.id='acm';
+  m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:999;display:flex;align-items:center;justify-content:center';
+  const recHit=(rec.recommended&&rec.recommended.tag_hits&&rec.recommended.tag_hits.length)?'，命中 '+rec.recommended.tag_hits.join('/'):'';
+  const weakNote = (rec.recommended && rec.recommended.weak) ? `<div style="font-size:12px;color:#c0392b;margin-bottom:8px">⚠️ 无强匹配，请手选合适简历</div>` : '';
+  m.innerHTML=`<div style="background:#fff;border-radius:14px;padding:18px 20px;width:340px;box-shadow:0 10px 40px rgba(0,0,0,.25)">
+    <div style="font-weight:700;font-size:15px;margin-bottom:6px">打开「${esc(company)}」用哪份简历？</div>
+    <div style="font-size:13px;color:#1F7A4D;margin-bottom:8px">🤖 助手推荐：<b>${esc(rec.recommended?rec.recommended.id:'')}</b>（匹配分 ${rec.recommended?rec.recommended.score:'-'}${esc(recHit)}）</div>
+    ${weakNote}
+    <select id="acm-sel" style="width:100%;padding:8px;border:1px solid #cfd6df;border-radius:8px;font-size:13px;margin-bottom:10px">
+      ${cands.map(c=>`<option value="${enc(c.id)}"${rec.recommended&&c.id===rec.recommended.id?' selected':''}>${esc(c.id)} · ${esc(c.name)}（${c.score}）</option>`).join('')}
+    </select>
+    <div style="display:flex;gap:8px">
+      <button class="btn" id="acm-ok">确认并打开</button>
+      <button class="btn gray" id="acm-no">取消</button>
+    </div></div>`;
+  document.body.appendChild(m);
+  m.querySelector('#acm-ok').onclick=async()=>{
+    const rid=m.querySelector('#acm-sel').value;
+    try{ await apiFetch(API+`/api/queue/${enc(decodeURIComponent(id))}/bind`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({resume_id:rid})}); }catch(e){}
+    m.remove(); toast('已绑定简历 '+rid); openSite(url, rid, company);
+  };
+  m.querySelector('#acm-no').onclick=()=>m.remove();
+}
+function openSite(url, resumeId, company){
+  // 油猴版：直接开新标签页；填充由 copilot.user.js 在目标页自动接管
+  window.open(url, '_blank', 'noopener');
+}
+async function setStatus(id,status){
+  id=decodeURIComponent(id);
+  await apiFetch(API+`/api/queue/${enc(id)}/status`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});
+  toast('状态→'+status); load();
+}
+async function markRecorded(id,company,role,ltype){
+  id=decodeURIComponent(id); company=decodeURIComponent(company); role=decodeURIComponent(role); ltype=decodeURIComponent(ltype);
+  const title = role || '';                       // 默认用该行 role，不再 prompt 标题
+  const channel = ltype==='官网'?'官网':'BOSS';
+  const rv = prompt('简历版本 ID（可选，默认当前激活简历）：', ACTIVE||'');   // 仅一次可选 prompt
+  const resume_version = (rv && rv.trim()) ? rv.trim() : null;
+  const r=await apiFetch(API+'/api/mark',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({company,title,channel,resume_version})});
+  if(r.ok){toast('已记录入库：'+company+' · '+title);}
+  else{const e=await r.json().catch(()=>({}));toast('记录失败：'+(e.detail||e.error||r.status));}
+  load();
+}
+
+// 记录管理：状态机 + 截止倒计时
+function parseDeadline(text){
+  if(!text) return {days:null,urgent:false};
+  const urgent = /紧急|截止/.test(text) || /urgent/i.test(text);
+  const m = text.match(/(\d{1,2})\/(\d{1,2})/);
+  if(!m) return {days:null,urgent:urgent};
+  const mo=parseInt(m[1],10), da=parseInt(m[2],10);
+  if(mo<1||mo>12||da<1||da>31) return {days:null,urgent:urgent};
+  const now=new Date(); const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  let d=new Date(now.getFullYear(), mo-1, da);
+  if(d < today) d=new Date(now.getFullYear()+1, mo-1, da);
+  const days=Math.round((d-today)/86400000);
+  return {days:days, urgent: urgent || days<=7};
+}
+function renderRecord(){
+  const tb=document.getElementById('recRows');
+  tb.innerHTML = ITEMS.map(i=>{
+    const dl=parseDeadline(i.deadline);
+    const dlHtml = dl.days!==null
+      ? (dl.days<0 ? '<span style="color:#888">已过期</span>'
+         : `<b style="color:${dl.urgent?'#c0392b':'#1F7A4D'}">${dl.days} 天</b>`)
+      : `<span style="color:#888">${esc(i.deadline||'')}</span>`;
+    const chips = STATUS_ORDER.map(st=>{
+      const active = i.status===st ? ' style="background:#185FA5;color:#fff"' : '';
+      return `<button class="schip"${active} onclick="setStatus('${enc(i.id)}','${st}')">${st}</button>`;
+    }).join('');
+    return `<tr data-cat="${enc(i.cat)}">
+<td style="font-weight:600">${esc(i.company)}</td>
+<td>${esc(i.cat||'')}</td>
+<td>${esc(i.role||'')}</td>
+<td style="font-size:12px;color:#555">${esc(i.loc||'')}</td>
+<td>${dlHtml}</td>
+<td><span class="badge ${i.status}">${i.status}</span></td>
+<td class="actions">${chips}
+<button class="rec" onclick="markRecorded('${enc(i.id)}','${enc(i.company)}','${enc(i.role)}','${enc(i.ltype)}')">记录入库</button></td>
+</tr>`;
+  }).join('');
+}
+
+// 重生成清单
+function regenerate(){
+  apiFetch(API+'/api/regenerate',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
+    .then(r=>r.json()).then(j=>{ if(j.ok){toast('清单已重生成，共 '+j.count+' 条'); load();} else toast('重生成失败：'+(j.error||'')); })
+    .catch(e=>toast('重生成失败：'+e));
+}
+
+// 生成更多：调研入箱 + 轮询建议 + 采纳/忽略
+function submitResearch(){
+  const cat=document.getElementById('rcat').value;
+  const kw=document.getElementById('rkw').value.trim();
+  apiFetch(API+'/api/research',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cat,keywords:kw})})
+    .then(r=>r.json()).then(j=>{
+      if(j.ok){ toast('已提交调研任务 #'+(j.task_id||j.request_id)+'，等待 AI 回写…'); startPoll(); }
+      else { toast('调研提交失败：'+(j.error||'未知错误')); }
+    })
+    .catch(e=>toast('调研提交失败：'+e));
+}
+function startPoll(){ if(POLL_TIMER)clearInterval(POLL_TIMER); POLL_TIMER=setInterval(pollSuggestions,3000); pollSuggestions(); }
+function stopPoll(){ if(POLL_TIMER){clearInterval(POLL_TIMER);POLL_TIMER=null;} }
+function pollSuggestions(){
+  apiFetch(API+'/api/suggestions').then(r=>r.json()).then(j=>{ SUGG=j.items||[]; renderSuggestions();
+    if(!SUGG.length) stopPoll(); }).catch(()=>{});
+}
+function renderSuggestions(){
+  const box=document.getElementById('suggList');
+  if(!SUGG.length){ box.innerHTML='<div style="color:#888;font-size:13px;padding:8px 0">AI 尚未回写，可重试或检查 WorkBuddy 调研技能。</div>'; return; }
+  box.innerHTML = SUGG.map(s=>`<div style="border:1px solid #e3e8ef;border-radius:10px;padding:10px 12px;margin:8px 0">
+    <div style="font-weight:600">${esc(s.company)} <span style="background:#eee;font-size:11px;padding:1px 7px;border-radius:8px;color:#555">${esc(s.cat||'')}</span></div>
+    <div style="font-size:12px;color:#555;margin:3px 0">${esc(s.role||'')} · ${esc(s.loc||'')} · ${esc(s.sal||'')} · 截止 ${esc(s.deadline||'')}</div>
+    <div style="margin-top:6px"><a class="btn" style="text-decoration:none" href="${enc(s.url)}" target="_blank" rel="noopener">打开</a>
+    <button class="btn green" onclick="adopt('${enc(s.id)}')">采纳</button>
+    <button class="btn gray" onclick="dismiss('${enc(s.id)}')">忽略</button></div></div>`).join('');
+}
+function adopt(id){ id=decodeURIComponent(id);
+  apiFetch(API+'/api/suggestions/adopt',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})})
+    .then(r=>r.json()).then(j=>{ if(j.ok){toast('已采纳，进入队列'); load(); pollSuggestions();} else toast('采纳失败'); })
+    .catch(e=>toast('采纳失败：'+e));
+}
+function dismiss(id){ id=decodeURIComponent(id);
+  apiFetch(API+'/api/suggestions/'+enc(id),{method:'DELETE'}).then(()=>{toast('已忽略');pollSuggestions();}).catch(e=>toast('忽略失败'));
+}
+
+function showTab(t){
+  document.querySelectorAll('.panel').forEach(p=>p.style.display='none');
+  document.getElementById('panel-'+t).style.display='';
+  document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
+  document.querySelector('.tab[data-t="'+t+'"]').classList.add('active');
+  if(t==='more') startPoll(); else stopPoll();
+}
+
+async function doMatch(){
+  const jd=document.getElementById('jd').value.trim();
+  if(!jd){toast('先粘贴 JD 文本');return;}
+  const r=await apiFetch(API+'/api/match',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jd})});
+  const j=await r.json();
+  const rec=j.recommended;
+  document.getElementById('matchmeta').textContent=`JD ${j.jd_chars} 字 · 候选 ${j.candidates.length} 份`;
+  const box=document.getElementById('matchout');
+  box.style.display='block';
+  box.innerHTML=`<b>👉 推荐：</b><code>${esc(rec.id)}</code> ${esc(rec.name)} — 匹配分 <b>${rec.score}</b>`+
+    (rec.weak ? ` <span style="color:#c0392b">（无强匹配，请手选）</span>` : ``)+
+    `<br>命中标签：${(rec.tag_hits||[]).join('、')||'无'}<br>`+
+    `<details><summary>全部候选</summary>`+
+    j.candidates.map(c=>`<div>${c.score} · ${esc(c.id)}（${esc(c.name)}）— 命中:${(c.tag_hits||[]).join('/')||'无'}</div>`).join('')+
+    `</details>`;
+}
+
+// ================= 自动走单：urgency 优先 → deadline 升序，逐家打开 =================
+function urgRank(i){ return {urgent:0, near:1, open:2, expired:3}[i.urg] ?? 9; }
+function dlOrd(i){
+  const dl = parseDeadline(i.deadline);
+  return (dl && dl.days !== null && dl.days >= 0) ? dl.days : 99999;
+}
+function autoWalk(){
+  const pend = ITEMS.filter(i=>i.status==='未投' && i.url && !i.sugg)
+    .sort((a,b)=> (urgRank(a)-urgRank(b)) || (dlOrd(a)-dlOrd(b)));
+  if(!pend.length){ toast('没有未投且带官网链接的岗位'); return; }
+  const preview = pend.slice(0,8).map((i,n)=>`${n+1}.${i.company}（${urgLabel[i.urg]||i.urg}）`).join('  ');
+  if(!confirm(`自动走单：按紧急度顺序逐家打开 ${pend.length} 家公司官网（每家投完回来点「下一家」，可跳过/停止）。\n\n顺序预览：${preview}${pend.length>8?' …':''}\n\n开始？`)) return;
+  WALK.list = pend; WALK.idx = 0; WALK.active = true;
+  openWalkItem();
+}
+function openWalkItem(){
+  if(!WALK.active) return;
+  if(WALK.idx >= WALK.list.length){ toast('🎉 自动走单完成：全部处理完'); WALK.active=false; return; }
+  const it = WALK.list[WALK.idx];
+  toast(`走单 ${WALK.idx+1}/${WALK.list.length}：${it.company}`);
+  apiFetch(API+`/api/queue/${enc(it.id)}/status`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'进行中'})}).catch(()=>{});
+  window.open(it.url, '_blank', 'noopener');
+  showWalkModal(it);
+}
+function showWalkModal(it){
+  let m=document.getElementById('walkm'); if(m) m.remove();
+  m=document.createElement('div'); m.id='walkm';
+  m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:999;display:flex;align-items:center;justify-content:center';
+  m.innerHTML=`<div style="background:#fff;border-radius:14px;padding:20px 22px;width:360px;box-shadow:0 10px 40px rgba(0,0,0,.3)">
+    <div style="font-weight:700;font-size:15px;margin-bottom:6px">走单 ${WALK.idx+1}/${WALK.list.length}：${esc(it.company)}</div>
+    <div style="font-size:12.5px;color:#555;margin-bottom:12px">${esc(it.role||'')} · ${esc(it.loc||'')} · 截止 ${esc(it.deadline||'')}</div>
+    <div style="font-size:12.5px;color:#5f6368;margin-bottom:12px">已在官网新标签页打开。油猴助手会自动填表 + 挂简历 + 检测投递成功后自动记账。投完后回来：</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn green" id="walk-next">✅ 已投完，下一家</button>
+      <button class="btn gray" id="walk-skip">⏭ 跳过这家</button>
+      <button class="btn" style="background:#c0392b" id="walk-stop">■ 停止走单</button>
+    </div></div>`;
+  document.body.appendChild(m);
+  m.querySelector('#walk-next').onclick=()=>{ m.remove(); WALK.idx++; load(); openWalkItem(); };
+  m.querySelector('#walk-skip').onclick=()=>{ m.remove(); WALK.idx++; load(); openWalkItem(); };
+  m.querySelector('#walk-stop').onclick=()=>{ m.remove(); WALK.active=false; toast('已停止走单'); load(); };
+}
+
+// ================= 刷新清单：合并调研回写（research_inbox done → queue_seed） =================
+async function refreshQueue(){
+  toast('正在合并清单…');
+  try{
+    const r = await apiFetch(API+'/api/queue-merge',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:'inbox'})});
+    const j = await r.json();
+    if(j.ok){
+      toast(`清单已刷新：新增 ${j.added} · 去重合并 ${j.merged} · 剔除已投 ${j.removed_recorded} · 共 ${j.total} 条`);
+      load();
+    } else toast('刷新失败：'+(j.error||j.detail||'未知'));
+  }catch(e){ toast('刷新失败：'+e); }
+}
+
+// 队列状态自动刷新（走单弹窗打开时不打扰）
+setInterval(()=>{ if(!WALK.active && !document.hidden) load().catch(()=>{}); }, 15000);
+
+loadMeta();
+load();
+promptConfig();   // 首次访问弹一次「后端地址 + 访问令牌」输入，存 localStorage
+</script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+岗位名称：Agent 开发工程师 / AI 应用工程
+岗位职责：
+1. 负责 LLM Agent 系统架构设计与开发，构建 Task Planning、Tool Calling、Memory 与状态管理模块；
+2. 面向业务场景落地 GUI Agent、多模态交互与 ADB 自动化，提升业务自动化率；
+3. 与产品、算法团队协作，推动 Agent 能力工程化、产品化。
+任职要求：
+1. 计算机相关专业硕士及以上学历；
+2. 熟练使用 Python，熟悉 Linux 开发环境，具备 Agent 模块化开发与工具集成经验；
+3. 有 VLM、Grounding、OCR 或多模态 Agent 落地经验者优先。

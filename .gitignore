@@ -1,0 +1,67 @@
+# ===== 密钥 / 令牌（绝不入库） =====
+.cloud_token
+_d_token.txt
+*.token
+.env
+
+# ===== 任何含真实令牌的服务配置副本（模板 deploy/copilot.service 用 EnvironmentFile） =====
+copilot.service.local
+*.service.local
+
+# ===== 会话 / QA 调试临时产物（非项目源码） =====
+_tmp_*
+_mask_probe*
+_panel_probe*
+_preview_shot.png
+_tracked.txt
+_sanitize*
+_d2_*
+_d3_*
+_d_*
+_d_cloud_*
+_qa*
+_qas*
+_qa2*
+_qa3*
+_s_*
+_t*
+_t2*
+_selftest_*
+_e2e_*
+_setval_*
+_final_*
+_fx_*
+_s_defaultd*
+_s_diag*
+_s_final*
+_s_fix*
+_s_nginx*
+_s_recon*
+_s_sync*
+
+# ===== 按岗位生成的"投递套件"（含真实简历/院校/电话，绝不入库） =====
+kits/
+
+# ===== 运行期个人数据（会被后端自动重建，不入库） =====
+profile.job.json
+queue.json
+resumes.json
+resume_active.json
+
+# ===== 日志 / 缓存 / 暂存 / 测试目录 =====
+*.log
+*.tar.gz
+__pycache__/
+_d_cloud_stage/
+_fx_test/
+_qa_round2_work/
+_qa_sync_/
+_qa_sync_work/
+_s_fix_work/
+.recon/
+
+# ===== 构建产物 / 打包部署目录（含个人简历 PDF 与投递状态，禁止入库） =====
+deploy/package/
+deploy/apply-copilot-deploy.tar.gz
+build/
+dist/

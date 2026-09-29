@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+<div class="hd">网申助手 Copilot</div>
+
+<div class="sec">
+  <div class="ttl">① 当前目标公司</div>
+  <select id="company" class="sel"></select>
+  <button id="setTarget" class="btn">设为当前目标</button>
+  <div id="curTarget" class="hint"></div>
+</div>
+
+<div class="sec">
+  <div class="ttl">② 简历匹配（粘 JD）</div>
+  <textarea id="jd" placeholder="把岗位 JD 粘进来，点匹配看推荐投哪份简历"></textarea>
+  <button id="matchBtn" class="btn alt">匹配简历</button>
+  <div id="matchOut" class="out"></div>
+</div>
+
+<div class="sec">
+  <div class="ttl">③ 已注册简历</div>
+  <div id="resumes" class="out"></div>
+</div>
+
+<div class="sec">
+  <div class="ttl">④ 快捷</div>
+  <button id="openDash" class="btn gray">打开投递队列仪表板</button>
+  <button id="openTarget" class="btn">打开目标公司网申页</button>
+</div>
+
+<div id="toast" class="toast"></div>
+<script src="popup.js"></script>
+</body>
+</html>

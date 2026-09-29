@@ -1,0 +1,45 @@
+sequenceDiagram
+  participant U as 用户
+  participant D as Dashboard(左栏 webview)
+  participant A as DesktopAPI(pywebview)
+  participant T as TabWindow(右栏 webview)
+  participant F as filler(后端进程)
+  U->>D: 点「打开」/输入 URL → new_tab(url)
+  D->>A: pywebview.api.new_tab(url)
+  A->>T: create_window(url, hidden)
+  A->>T: loaded 回调 inject_fab() 注入 🛠 浮标
+  U->>T: 在招聘页点 🛠 → fill_current()
+  T->>A: pywebview.api.fill_current()
+  A->>T: evaluate_js(SCAN_JS) 扫描可填字段
+  T-->>A: fields[]
+  A->>F: build_fill_payload(fields, PROFILE, bound_resume)
+  F-->>A: payload[{selector,value,confidence}]
+  A->>T: evaluate_js(APPLY_JS) 填值 + 红框未命中
+  Note over U,T: 简历 PDF 上传仍由用户手动；最终提交由用户本人（红线）
+  U->>T: 人工复核 → 提交
+  U->>D: 点「标记已记录」→ POST /api/mark
+
+---
+
+sequenceDiagram
+  participant U as 用户
+  participant D as Dashboard
+  participant S as 后端 server.py
+  participant W as WorkBuddy(本会话 AI)
+  participant Net as 官网/牛客
+  U->>D: 点「生成更多」填 cat + keywords
+  D->>S: POST /api/research {cat,keywords}
+  S->>S: 写 research_inbox.json(status=pending)
+  S-->>D: {request_id}
+  D-->>U: 提示「已提交调研请求」
+  W->>S: 读取 research_inbox.json 取 pending
+  W->>Net: WebSearch / WebFetch 找在招岗位 + 投递链接
+  W->>S: POST /api/inbox {request_id, items[]}
+  S->>S: 更新 research_inbox.json(status=done)
+  D->>S: 轮询 GET /api/inbox
+  S-->>D: done items[]
+  D-->>U: 展示候选清单（勾选采纳）
+  U->>D: 勾选 →「采纳并入队列」
+  D->>S: POST /api/queue/import {items[]}
+  S->>S: 写 research_adopted.json + merge_queue 刷新
+  D-->>U: 队列出现新项（未投）

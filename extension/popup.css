@@ -1,0 +1,20 @@
+*{box-sizing:border-box;margin:0}
+body{width:340px;font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;color:#1f2329;background:#fff}
+.hd{background:#185FA5;color:#fff;font-size:15px;font-weight:700;padding:11px 14px}
+.sec{padding:11px 14px;border-bottom:1px solid #eef1f5}
+.ttl{font-size:12px;color:#5f6368;font-weight:600;margin-bottom:7px}
+.sel{width:100%;padding:7px 8px;border:1px solid #cfd6df;border-radius:7px;font-size:13px;background:#fff;margin-bottom:7px}
+textarea{width:100%;min-height:62px;border:1px solid #cfd6df;border-radius:7px;padding:7px 8px;font-size:12px;font-family:inherit;resize:vertical;margin-bottom:7px}
+.btn{width:100%;background:#185FA5;color:#fff;border:none;border-radius:8px;padding:8px;font-size:13px;font-weight:600;cursor:pointer;margin-top:4px}
+.btn:hover{opacity:.92}
+.btn.alt{background:#d98210}
+.btn.gray{background:#8a93a0}
+.hint{font-size:12px;color:#1F7A4D;margin-top:6px;line-height:1.5}
+.out{font-size:12px;color:#333;margin-top:7px;line-height:1.6;max-height:160px;overflow:auto}
+.out code{background:#eef;padding:1px 4px;border-radius:4px}
+.out .rec{color:#1F7A4D;font-weight:700}
+.toast{position:fixed;left:50%;bottom:12px;transform:translateX(-50%);background:#222;color:#fff;padding:7px 13px;border-radius:8px;font-size:12px;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:.95}
+.rv{border:1px solid #e6eaf0;border-radius:7px;padding:6px 8px;margin-bottom:6px}
+.rv b{color:#185FA5}
+.rv .t{color:#888;font-size:11px}

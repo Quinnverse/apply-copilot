@@ -1,0 +1,62 @@
+{
+  "fields": 8,
+  "payload": [
+    {
+      "label": "name",
+      "selector": "#name",
+      "type": "text",
+      "value": "示例姓名",
+      "confidence": 1.0
+    },
+    {
+      "label": "mobile",
+      "selector": "#mobile",
+      "type": "tel",
+      "value": "138-0000-0000",
+      "confidence": 1.0
+    },
+    {
+      "label": "email",
+      "selector": "#email",
+      "type": "email",
+      "value": "you@example.com",
+      "confidence": 1.0
+    },
+    {
+      "label": "毕业院校",
+      "selector": "[name=school",
+      "type": "text",
+      "value": "示例大学",
+      "confidence": 1.0
+    },
+    {
+      "label": "专业",
+      "selector": "[name=major",
+      "type": "text",
+      "value": "机器学习 / 自然语言处理 / 大数据开发 / 数据科学",
+      "confidence": 1.0
+    },
+    {
+      "label": "最高学历请选择本科硕士博士",
+      "selector": "[name=degree",
+      "type": "select",
+      "value": "硕士",
+      "confidence": 1.0
+    },
+    {
+      "label": "政治面貌",
+      "selector": "[name=political",
+      "type": "text",
+      "value": "[待补充]",
+      "confidence": 1.0
+    },
+    {
+      "label": "self",
+      "selector": "#self",
+      "type": "textarea",
+      "value": "",
+      "confidence": 0.0
+    }
+  ],
+  "generated_at": "2026-09-11T16:18:37+08:00"
+}

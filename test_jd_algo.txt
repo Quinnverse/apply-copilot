@@ -1,0 +1,9 @@
+岗位名称：大模型算法工程师
+岗位职责：
+1. 负责大语言模型后训练（Post-training）算法研发，包括 SFT、RLHF、GRPO、Reward Modeling 等；
+2. 优化 Agent 长链路任务完成率，设计 Hierarchical Reward 与 Reflection Loop；
+3. 参与多模态大模型算法研究，推动模型在业务场景落地。
+任职要求：
+1. 计算机/人工智能相关专业硕士及以上学历；
+2. 熟悉 PyTorch、Transformers，具备 LLM 训练与推理优化经验；
+3. 有顶会论文或大规模模型训练经验者优先。

@@ -1,0 +1,193 @@
+// 网申助手 content script —— 在网申页上：
+//  · 扫描表单字段，调用后端生成填充方案并填值（不提交）
+//  · 上传推荐简历到文件框
+//  · 检测"提交成功"页，弹出"记录投递"气泡（仍需你本人点击，合规）
+// 人类在环：所有填充/上传/记录都是你点按钮触发，提交永远是你本人。
+
+(function () {
+  if (window.__applyCopilotInjected) return;
+  window.__applyCopilotInjected = true;
+
+  const SUCCESS_KW = ["投递成功", "提交成功", "申请已提交", "简历已收到", "投递完成", "您已成功投递", "报名成功", "已成功投递"];
+  let successFlagged = false;
+  let statusEl = null;
+
+  function send(type, extra) {
+    return new Promise((res) => chrome.runtime.sendMessage({ type, ...extra }, (r) => res(r || { error: "no response" })));
+  }
+  function getStore(key) {
+    return new Promise((res) => chrome.storage.local.get([key], (s) => res(s)));
+  }
+  function status(msg) { if (statusEl) statusEl.textContent = msg; }
+  function toast(msg) {
+    const t = document.createElement("div");
+    t.textContent = msg;
+    t.style.cssText = "position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#222;color:#fff;padding:8px 14px;border-radius:9px;font-size:13px;z-index:2147483647;box-shadow:0 4px 12px rgba(0,0,0,.3)";
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 2400);
+  }
+
+  // ---- 字段扫描（与 filler.py 思路一致，但跑在真实 DOM 上）----
+  function scanFields() {
+    const els = [...document.querySelectorAll("input,select,textarea")].filter((el) => {
+      const t = el.tagName.toLowerCase();
+      if (t === "input") {
+        const ty = (el.type || "text").toLowerCase();
+        if (["hidden", "submit", "reset", "button", "image", "radio", "checkbox"].includes(ty)) return false;
+      }
+      return true;
+    });
+    return els.map((el) => {
+      const t = el.tagName.toLowerCase();
+      let label = "";
+      if (el.id) {
+        const l = document.querySelector("label[for='" + (window.CSS && CSS.escape ? CSS.escape(el.id) : el.id) + "']");
+        if (l) label = l.textContent.trim();
+      }
+      if (!label) { const pl = el.closest("label"); if (pl) label = pl.textContent.trim(); }
+      if (!label) { const p = el.previousElementSibling; if (p && p.tagName === "LABEL") label = p.textContent.trim(); }
+      return {
+        tag: t,
+        type: t === "input" ? (el.type || "text") : t,
+        id: el.id || "",
+        name: el.name || "",
+        placeholder: el.placeholder || "",
+        label: label,
+      };
+    });
+  }
+
+  function setVal(el, v) {
+    try {
+      if (el.tagName === "SELECT") el.value = v;
+      else el.value = v;
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+      el.style.backgroundColor = "#e8f3ff";
+    } catch (e) {}
+  }
+  function applyPayload(payload) {
+    let filled = 0, missed = 0;
+    payload.forEach((p) => {
+      if (!p.selector) return;
+      const el = document.querySelector(p.selector);
+      if (!el) { missed++; return; }
+      if (p.confidence >= 0.5 && p.value) { setVal(el, p.value); filled++; }
+      else { el.style.border = "2px solid #e74c3c"; missed++; }
+    });
+    status("已填充 " + filled + " 个，未命中 " + missed + " 个（红框需手填）");
+  }
+
+  async function doFill() {
+    const fields = scanFields();
+    if (!fields.length) { status("未识别到可填字段"); return; }
+    const s = await getStore("currentTarget");
+    const jd = (s.currentTarget && s.currentTarget.jd) || null;
+    const r = await send("fill", { fields, jd });
+    if (r.error) { status("填充失败：" + r.error); return; }
+    applyPayload(r.json.payload || []);
+  }
+
+  async function uploadResume() {
+    let st = await getStore("currentResumeId");
+    let id = (st && st.currentResumeId) || null;
+    if (!id) {
+      const r = await send("getResumes");
+      const list = (r.json && r.json.resumes) || [];
+      id = prompt("上传哪份简历？输入 id：\n" + list.map((x) => x.id + "  " + x.name).join("\n"), list[0] && list[0].id);
+      if (!id) return;
+    }
+    const r = await send("resumeFile", { id });
+    if (r.error) { status("获取简历失败：" + r.error); return; }
+    const input = document.querySelector("input[type=file]");
+    if (!input) { status("未找到文件上传框，请手动上传"); return; }
+    try {
+      const blob = await (await fetch(r.dataUrl)).blob();
+      const file = new File([blob], r.name, { type: "application/pdf" });
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      try { input.files = dt.files; }
+      catch (e) { Object.defineProperty(input, "files", { value: dt.files, configurable: true }); }
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      status("已尝试上传简历：" + r.name + "（页面若无反应请手动确认）");
+    } catch (e) { status("上传失败：" + e); }
+  }
+
+  async function doRecord() {
+    const s = await getStore("currentTarget");
+    const company = (s.currentTarget && s.currentTarget.company) || "";
+    const c = prompt("公司名", company) || company;
+    if (!c) return;
+    const title = prompt("岗位标题（用于投递库记录）", "") || "";
+    const rv = prompt("简历版本 id（可选，如 algo-v1 / agent-dev-v1）", "") || "";
+    const r = await send("mark", { payload: { company: c, title, resume_version: rv || null, channel: "官网" } });
+    if (r.error) { status("记录失败：" + r.error); toast("记录失败：" + r.error); }
+    else { status("已记录：" + c + " · " + title); toast("已记录 ✓"); }
+  }
+
+  function flagSuccess() {
+    if (successFlagged) return;
+    successFlagged = true;
+    const b = document.getElementById("ac-record");
+    if (b) { b.classList.add("ac-pulse"); b.style.background = "#1F7A4D"; }
+    banner("🎉 检测到提交成功页 —— 点「记录投递」入库（仍需你本人确认）");
+  }
+  function banner(msg) {
+    const d = document.createElement("div");
+    d.textContent = msg;
+    d.style.cssText = "position:fixed;top:12px;left:50%;transform:translateX(-50%);background:#1F7A4D;color:#fff;padding:9px 16px;border-radius:10px;font-size:13px;z-index:2147483647;box-shadow:0 4px 12px rgba(0,0,0,.3)";
+    document.body.appendChild(d);
+    setTimeout(() => d.remove(), 6000);
+  }
+
+  // ---- 注入浮动工具条 ----
+  function inject() {
+    if (document.getElementById("ac-fab")) return;
+    const css = `
+      #ac-fab{position:fixed;right:14px;bottom:14px;z-index:2147483647;font-family:-apple-system,'PingFang SC',sans-serif}
+      #ac-fab .fab{width:46px;height:46px;border-radius:50%;background:#185FA5;color:#fff;border:none;font-size:22px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.3)}
+      #ac-fab .panel{display:none;position:absolute;right:0;bottom:56px;width:230px;background:#fff;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.25);padding:12px;color:#1f2329}
+      #ac-fab .panel.open{display:block}
+      #ac-fab button.act{display:block;width:100%;margin:5px 0;background:#185FA5;color:#fff;border:none;border-radius:8px;padding:9px;font-size:13px;font-weight:600;cursor:pointer}
+      #ac-fab button.act.rec{background:#1F7A4D}
+      #ac-fab button.act.up{background:#d98210}
+      #ac-fab .st{font-size:11.5px;color:#5f6368;margin-top:6px;line-height:1.5;min-height:16px}
+      #ac-fab .act.ac-pulse{animation:acp 1s infinite}@keyframes acp{0%{box-shadow:0 0 0 0 rgba(31,122,77,.6)}70%{box-shadow:0 0 0 10px rgba(31,122,77,0)}100%{box-shadow:0 0 0 0 rgba(31,122,77,0)}}`;
+    const style = document.createElement("style"); style.textContent = css; document.head.appendChild(style);
+
+    const root = document.createElement("div");
+    root.id = "ac-fab";
+    root.innerHTML = `
+      <div class="panel" id="ac-panel">
+        <button class="act" id="ac-fill">① 填充表单</button>
+        <button class="act up" id="ac-up">② 上传推荐简历</button>
+        <button class="act rec" id="ac-record">③ 记录投递</button>
+        <div class="st" id="ac-st"></div>
+      </div>
+      <button class="fab" id="ac-toggle" title="网申助手">🛠</button>`;
+    document.body.appendChild(root);
+    statusEl = root.querySelector("#ac-st");
+
+    root.querySelector("#ac-toggle").onclick = () => root.querySelector("#ac-panel").classList.toggle("open");
+    root.querySelector("#ac-fill").onclick = doFill;
+    root.querySelector("#ac-up").onclick = uploadResume;
+    root.querySelector("#ac-record").onclick = doRecord;
+  }
+
+  function checkSuccess() {
+    if (successFlagged || !document.body) return;
+    const txt = document.body.innerText || "";
+    if (SUCCESS_KW.some((k) => txt.includes(k))) flagSuccess();
+  }
+
+  function boot() {
+    inject();
+    checkSuccess();
+    const mo = new MutationObserver(() => checkSuccess());
+    mo.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+  }
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+  else boot();
+})();

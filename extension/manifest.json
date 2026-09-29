@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "网申助手 Copilot",
+  "version": "0.1.0",
+  "description": "半自动校招网申辅助：推荐简历、自动填表、上传简历、提交后一键记录。不代登录、不破解验证码、不自动提交。",
+  "permissions": ["storage", "tabs", "activeTab", "scripting"],
+  "host_permissions": [
+    "http://127.0.0.1:8787/*",
+    "http://localhost:8787/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "网申助手"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
