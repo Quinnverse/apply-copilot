@@ -1452,10 +1452,25 @@
     }).then(function (res) {
       if (!res) return;   // 仪表板页直接退出
       if (res && res.status === 401) {
-        // 云端令牌未填/填错：提示后走手动启用兜底，不报错循环
-        console.warn('[网申助手] 后端 401：请点油猴图标 →「⚙ 网申助手设置」填访问令牌');
-        logLine('后端 401：请点油猴图标 →「⚙ 网申助手设置」填「访问令牌」');
-        return maybeManual();
+        // 云端令牌未填/填错：直接弹窗让你粘贴新令牌（存进 GM 后自动重连），
+        // 不用再去油猴菜单翻设置。同一天只问一次；取消则当天不再打扰。
+        console.warn('[网申助手] 后端 401：访问令牌无效或缺失');
+        logLine('后端 401：令牌无效，请在弹窗中粘贴新令牌');
+        var dt = new Date();
+        var ymd = '' + dt.getFullYear() + ('0' + (dt.getMonth() + 1)).slice(-2) + ('0' + dt.getDate()).slice(-2);
+        return GMshim.get('ac:token_ask').then(function (asked) {
+          if (asked === ymd) return maybeManual();
+          GMshim.set('ac:token_ask', ymd);
+          var tk = (window.prompt(
+            '网申助手：后端返回 401，访问令牌无效或缺失。\n\n请粘贴新的访问令牌（留空 / 取消 = 今天不再提示）：',
+            ''
+          ) || '').trim();
+          if (!tk) return maybeManual();
+          GMshim.set('ac:token', tk);
+          SET.token = tk;
+          logLine('已保存新令牌，正在重新连接…');
+          setTimeout(boot, 300);
+        });
       }
       var data = null;
       try { data = JSON.parse(res.text); } catch (e) {}
