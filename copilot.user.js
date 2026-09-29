@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         网申助手 Copilot
 // @namespace    apply-copilot
-// @version      1.2.1
+// @version      1.3.0
 // @description  各厂官网网申全链路：自动填表 / 自动挂简历 / 提交闸门 / 成功侦测自动记账。
 //               红线：绝不代登录、绝不碰验证码；自动提交是设置项且默认关闭，默认只高亮提交按钮由用户本人点。
 // @author       apply-copilot
@@ -825,6 +825,41 @@
     box.querySelector('#ac-copy-back').onclick = function () { openPanel('ac-main'); };
     openPanel('ac-copy');
   }
+  // ---- 当前身份（多租户：一个令牌 = 一份独立数据，面板上明示"你是谁"）----
+  var WHOAMI = { label: '', tenant: '', multi: false };
+  function fetchWhoami() {
+    if (!SET.backend || !SET.token) return Promise.resolve(null);
+    return GMshim.http({
+      method: 'GET', timeout: 8000, url: SET.backend + '/api/whoami',
+      headers: { 'X-AC-Token': SET.token || '' }
+    }).then(function (r) {
+      if (!r || r.status !== 200) return null;
+      try {
+        var d = JSON.parse(r.text);
+        if (d && d.ok) {
+          WHOAMI = { label: d.label || '', tenant: d.tenant || '', multi: !!d.multi_tenant };
+          updateWho();
+          return WHOAMI;
+        }
+      } catch (e) {}
+      return null;
+    }).catch(function () { return null; });
+  }
+  function updateWho() {
+    var el = document.getElementById('ac-who');
+    if (el) {
+      el.textContent = WHOAMI.multi
+        ? ('👤 ' + (WHOAMI.label || '未命名') + ' · 独立数据空间')
+        : (WHOAMI.tenant ? '👤 本地单用户' : '');
+    }
+    var sr = document.getElementById('ac-who-set');
+    if (sr) {
+      sr.textContent = '当前身份：' + (WHOAMI.multi
+        ? ((WHOAMI.label || '未命名') + '（' + WHOAMI.tenant + '）')
+        : (WHOAMI.tenant ? '本地单用户' : '未连接（填后端地址与令牌后自动识别）'));
+    }
+  }
+
   function settingsFormHTML() {
     function chk(id, label, val) {
       return '<label class="srow"><input type="checkbox" id="' + id + '"' + (val === '1' ? ' checked' : '') + '> ' + label + '</label>';
@@ -836,7 +871,8 @@
       + chk('set-pick', '点选填充模式（默认开，点输入框即弹选值）', SET.pickMode)
       + chk('set-debug', '调试日志（控制台输出运行信息）', SET.debug)
       + '<label class="srow">后端地址 <input id="set-backend" value="' + String(SET.backend).replace(/"/g, '&quot;') + '"></label>'
-      + '<label class="srow">访问令牌 <input id="set-token" type="password" value="' + String(SET.token || '').replace(/"/g, '&quot;') + '"></label>';
+      + '<label class="srow">访问令牌 <input id="set-token" type="password" value="' + String(SET.token || '').replace(/"/g, '&quot;') + '"></label>'
+      + '<div class="srow" id="ac-who-set" style="opacity:.8"></div>';
   }
   function bindSettingsSave(box, onDone) {
     box.querySelector('#set-save').onclick = function () {
@@ -861,7 +897,11 @@
       ]).then(function () {
         toast('设置已保存');
         logLine('⚙ 设置已保存（autoSubmit=' + (SET.autoSubmit === '1' ? '开' : '关') + '）');
-        if (onDone) onDone();
+        // 令牌可能刚换过：重新确认身份（谁的令牌就进谁的数据空间）
+        fetchWhoami().then(function (w) {
+          if (w && w.multi) logLine('👤 当前身份：' + (w.label || '未命名') + '（独立数据空间）');
+          if (onDone) onDone();
+        });
       });
     };
   }
@@ -873,6 +913,7 @@
       + '<button class="act ghost" id="set-back">← 返回</button>';
     bindSettingsSave(box, function () { openPanel('ac-main'); });
     box.querySelector('#set-back').onclick = function () { openPanel('ac-main'); };
+    updateWho(); fetchWhoami();
     openPanel('ac-set');
   }
   // 任意页面可用的独立设置卡：不依赖悬浮面板（登录页 / 未启用站点也能打开）
@@ -1127,6 +1168,7 @@
       + '#ac-fab .panel{pointer-events:auto;display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:400px;max-width:92vw;max-height:82vh;overflow-y:auto;background:#fff;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.28);padding:0;color:#1f2329;z-index:2147483647}'
       + '#ac-fab .ac-hd{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #eef1f5;background:#fff;border-radius:14px 14px 0 0}'
       + '#ac-fab .ac-hd-t{font-size:14px;font-weight:700;color:#1f2329}'
+      + '#ac-fab .ac-who{font-size:11px;color:#8a94a6;margin-top:2px;max-width:210px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
       + '#ac-fab .ac-x{width:26px;height:26px;border:none;background:#f2f5f9;color:#5f6368;border-radius:50%;font-size:13px;cursor:pointer;line-height:1}'
       + '#ac-fab .ac-x:hover{background:#e6ebf2;color:#1f2329}'
       + '#ac-fab .ac-bd{padding:12px 14px 14px}'
@@ -1174,7 +1216,8 @@
     var root = document.createElement('div'); root.id = 'ac-fab';
     root.innerHTML = '<div class="ac-mask" id="ac-panel-mask"></div>'
       + '<div class="panel" id="ac-panel">'
-      + '<div class="ac-hd"><span class="ac-hd-t">🛠 网申助手 Copilot</span>'
+      + '<div class="ac-hd"><div style="min-width:0"><span class="ac-hd-t">🛠 网申助手 Copilot</span>'
+      + '<div class="ac-who" id="ac-who"></div></div>'
       + '<button class="ac-x" id="ac-close" title="关闭（Esc）">✕</button></div>'
       + '<div class="ac-bd">'
       + '<div class="meta" id="ac-meta"></div>'
@@ -1482,6 +1525,10 @@
         return;
       }
       CTX = data;
+      // 多租户：确认当前令牌对应哪份数据空间（面板标题下会显示身份）
+      fetchWhoami().then(function (w) {
+        if (w && w.multi) logLine('👤 当前身份：' + (w.label || '未命名') + '（独立数据空间）');
+      });
       RULES = data.rules || [];
       VALUES = data.values || [];
       LEARNED = data.learned || {};

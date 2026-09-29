@@ -48,6 +48,11 @@ queue.json
 resumes.json
 resume_active.json
 
+# ===== 多租户：令牌表（含所有人的访问令牌，绝不入库）+ 各租户数据目录 =====
+tokens.json
+data/tenants/
+tenants/
+
 # ===== 日志 / 缓存 / 暂存 / 测试目录 =====
 *.log
 *.tar.gz

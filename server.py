@@ -28,12 +28,15 @@
    本地开发请保持 127.0.0.1，不要在本机用 0.0.0.0 跑。
 """
 import argparse
+import contextvars
+import hashlib
 import hmac
 import os
 import re
 import sys
 import subprocess
 import json
+import threading
 import uuid
 from pathlib import Path
 from datetime import date, datetime
@@ -60,6 +63,23 @@ DATA_DIR = Path(os.environ.get("AC_DATA_DIR") or HERE).resolve()
 STATIC_DIR = Path(os.environ.get("AC_STATIC_DIR") or HERE / "static").resolve()
 RESUME_DIR = Path(os.environ.get("AC_RESUME_DIR") or DATA_DIR / "resumes").resolve()
 AC_TOKEN = (os.environ.get("AC_TOKEN") or "").strip()
+# 多租户：令牌表文件（{tokens: {"<token>": {"label": "张三", "tenant": "t_xxx"}}}）
+TOKENS_FILE = Path(os.environ.get("AC_TOKENS_FILE") or DATA_DIR / "tokens.json").resolve()
+TENANTS_DIR = Path(os.environ.get("AC_TENANTS_DIR") or DATA_DIR / "tenants").resolve()
+
+# 多令牌（可选）：AC_TOKENS="标签1:令牌1,标签2:令牌2"，逗号分隔；不含 ':' 时标签留空
+_ENV_TOKENS = []
+for _raw in (os.environ.get("AC_TOKENS") or "").split(","):
+    _raw = _raw.strip()
+    if not _raw:
+        continue
+    if ":" in _raw:
+        _lab, _tok = _raw.split(":", 1)
+    else:
+        _lab, _tok = "", _raw
+    _tok = _tok.strip()
+    if _tok:
+        _ENV_TOKENS.append((_tok, _lab.strip()))
 
 # ---- 路径 ----
 PROFILE_PATH = DATA_DIR / "profile.job.json"
@@ -92,6 +112,161 @@ import apply as apply_mod  # noqa: E402
 
 # 预加载档案（fill/match 用）
 PROFILE = copilot.load_json(PROFILE_PATH) if PROFILE_PATH.exists() else {}
+
+
+# ============================================================== 多租户（令牌分租户）
+# 规则：一个访问令牌 = 一个租户 = 一个自包含的数据目录 DATA_DIR/tenants/<tid>。
+# 不同令牌的用户之间，档案 / 简历 PDF / 投递记录 / 字段记忆 / 队列状态 完全隔离，
+# 服务端按请求令牌路由目录，Token A 的请求永远读不到 Token B 目录里的任何字节。
+# 没配任何令牌（本地 127.0.0.1 自用）时走 DEFAULT_PATHS，行为与改造前完全一致。
+
+def _tid_of(token):
+    """令牌 -> 租户 id（只落哈希前 16 位，令牌原文不写进目录名）。"""
+    return "t_" + hashlib.sha256(str(token).encode("utf-8")).hexdigest()[:16]
+
+
+def _mk_paths(root, tid="", label=""):
+    """按目录 root 组装一套完整数据路径（租户目录自包含，含 applications.json）。"""
+    root = Path(root)
+    return SimpleNamespace(
+        tid=tid, label=label, root=root,
+        DATA_DIR=root,
+        RESUME_DIR=root / "resumes",
+        PROFILE_PATH=root / "profile.job.json",
+        REGISTRY_PATH=root / "resumes.json",
+        SEED_PATH=root / "queue_seed.json",
+        QUEUE_DB=root / "queue.json",
+        RESEARCH_INBOX_PATH=root / "research_inbox.json",
+        SUGGESTIONS_PATH=root / "suggestions.json",
+        RESUME_ACTIVE_PATH=root / "resume_active.json",
+        FIELD_MEMORY_PATH=root / "field_memory.json",
+        SCAN_DUMP_PATH=root / "scan_dump.json",
+        APP_JSON=root / "applications.json",
+        STATE_JSON=root / "seen_postings.json",
+    )
+
+
+# 单用户 / 无令牌时的默认路径（就是上面的模块级常量，保持旧行为）
+DEFAULT_PATHS = _mk_paths(DATA_DIR, tid="default", label="本地")
+DEFAULT_PATHS.RESUME_DIR = RESUME_DIR
+DEFAULT_PATHS.APP_JSON = APP_JSON
+DEFAULT_PATHS.STATE_JSON = STATE_JSON
+
+_TENANT_PATHS = {"default": DEFAULT_PATHS}
+_TENANT_LOCK = threading.Lock()
+
+# 令牌表缓存：{token: {"label":..,"tid":..}}，按文件 mtime 失效 —— 改 tokens.json 无需重启
+_TOKEN_CACHE = {"mtime": -1.0, "map": {}}
+
+
+def load_tokens():
+    """读取令牌表（tokens.json 优先 + 环境变量 / AC_TOKEN 兜底）。"""
+    try:
+        mtime = TOKENS_FILE.stat().st_mtime if TOKENS_FILE.exists() else -1.0
+    except OSError:
+        mtime = -1.0
+    if mtime != _TOKEN_CACHE["mtime"]:
+        raw = {}
+        if TOKENS_FILE.exists():
+            try:
+                raw = json.loads(TOKENS_FILE.read_text(encoding="utf-8")).get("tokens") or {}
+            except Exception:
+                raw = {}
+        mp = {}
+        for tok, meta in raw.items():
+            tok = str(tok or "").strip()
+            if not tok:
+                continue
+            meta = meta if isinstance(meta, dict) else {"label": str(meta)}
+            mp[tok] = {"label": str(meta.get("label") or ""),
+                       "tid": str(meta.get("tenant") or _tid_of(tok))}
+        for tok, label in _ENV_TOKENS:
+            mp.setdefault(tok, {"label": label, "tid": _tid_of(tok)})
+        if AC_TOKEN and AC_TOKEN not in mp:
+            mp[AC_TOKEN] = {"label": "owner", "tid": _tid_of(AC_TOKEN)}
+        _TOKEN_CACHE["mtime"] = mtime
+        _TOKEN_CACHE["map"] = mp
+    return _TOKEN_CACHE["map"]
+
+
+def match_token(given):
+    """校验令牌，命中返回元信息 dict，否则 None（逐个 compare_digest，不早退）。"""
+    given = str(given or "")
+    if not given:
+        return None
+    hit = None
+    for tok, meta in load_tokens().items():
+        if hmac.compare_digest(given, tok):
+            hit = meta
+    return hit
+
+
+def _seed_tenant(root):
+    """新租户首次访问时初始化为空数据 —— 绝不从别的租户/root 目录继承任何内容。"""
+    root = Path(root)
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "resumes").mkdir(parents=True, exist_ok=True)
+
+    def _init(name, obj):
+        p = root / name
+        if not p.exists():
+            copilot.dump_json(p, obj)
+
+    _init("resumes.json", {"resumes": []})
+    _init("resume_active.json", {"active": ""})
+    _init("field_memory.json", {"fields": {}})
+    _init("queue.json", {"status": {}, "items": [], "bind": {}})
+    _init("applications.json", {"applications": {}})
+    _init("profile.job.json", {"schema_version": 1, "basic": {}})
+    # 岗位种子是公共数据：给新租户复制一份（之后各改各的，互不干扰）
+    if not (root / "queue_seed.json").exists():
+        shared = DATA_DIR / "queue_seed.json"
+        items = copilot.load_json(shared).get("items", []) if shared.exists() else []
+        copilot.dump_json(root / "queue_seed.json", {"items": items})
+
+
+def tenant_paths(meta):
+    """按令牌元信息取（必要时创建）租户路径对象。"""
+    tid = meta["tid"]
+    ps = _TENANT_PATHS.get(tid)
+    if ps is not None and ps.root.exists():
+        return ps
+    with _TENANT_LOCK:
+        ps = _TENANT_PATHS.get(tid)
+        if ps is None:
+            _seed_tenant(TENANTS_DIR / tid)
+            ps = _mk_paths(TENANTS_DIR / tid, tid, meta.get("label", ""))
+            _TENANT_PATHS[tid] = ps
+        return ps
+
+
+# 当前请求所属租户（middleware 鉴权通过后 set；本地无令牌时为 DEFAULT_PATHS）
+_tenant_var = contextvars.ContextVar("ac_tenant", default=None)
+
+
+def current_paths():
+    return _tenant_var.get() or DEFAULT_PATHS
+
+
+def current_profile():
+    """按当前租户实时读档案（多租户下不能用 import 期预加载的 PROFILE）。"""
+    p = current_paths().PROFILE_PATH
+    return copilot.load_json(p) if p.exists() else {}
+
+
+class _TenantProxy:
+    """让 TENANT.REGISTRY_PATH 这类写法按当前请求动态解析到该租户的目录。"""
+
+    def __getattr__(self, name):
+        return getattr(current_paths(), name)
+
+
+TENANT = _TenantProxy()
+
+# 是否需要令牌（import 期判定，仅用于决定是否关闭 /docs）
+AUTH_ENABLED = bool(AC_TOKEN or _ENV_TOKENS or TOKENS_FILE.exists())
+
+# ==== END TENANT CONFIG ====
 
 # 父目录（gen_submit_list.py 所在处；脚本用相对路径读 秋招投递进度.html）
 PARENT_DIR = HERE.parent
@@ -178,8 +353,8 @@ VALID_STATUS = {"未投", "进行中", "已投", "笔试", "面试"}
 # ---------------------------------------------------------------- 队列状态
 
 def load_seed():
-    if SEED_PATH.exists():
-        return copilot.load_json(SEED_PATH).get("items", [])
+    if TENANT.SEED_PATH.exists():
+        return copilot.load_json(TENANT.SEED_PATH).get("items", [])
     return []
 
 
@@ -191,8 +366,8 @@ _alias_groups = None  # 历史名，已并入 company_util.alias_groups；server
 
 def load_queue_doc():
     """读取 queue.json 全量文档：{status:{id:status}, items:[采纳后的岗位]}。"""
-    if QUEUE_DB.exists():
-        doc = copilot.load_json(QUEUE_DB)
+    if TENANT.QUEUE_DB.exists():
+        doc = copilot.load_json(TENANT.QUEUE_DB)
         doc.setdefault("status", {})
         doc.setdefault("items", [])
         return doc
@@ -200,7 +375,7 @@ def load_queue_doc():
 
 
 def save_queue_doc(doc):
-    copilot.dump_json(QUEUE_DB, doc)
+    copilot.dump_json(TENANT.QUEUE_DB, doc)
 
 
 def load_queue_state():
@@ -220,9 +395,9 @@ def load_queue_items():
 
 def recorded_companies():
     """从 applications.json 取出已记录投递的公司名集合。"""
-    if not APP_JSON or not APP_JSON.exists():
+    if not TENANT.APP_JSON or not TENANT.APP_JSON.exists():
         return set()
-    store = apply_mod.load_store(str(APP_JSON))
+    store = apply_mod.load_store(str(TENANT.APP_JSON))
     out = set()
     for a in store.get("applications", {}).values():
         c = (a.get("company") or "").strip()
@@ -258,8 +433,8 @@ def merge_queue():
             status = state[cid]
         # 已记录的company，把已投title回写
         titles = []
-        if status == "已记录" and APP_JSON and APP_JSON.exists():
-            store = apply_mod.load_store(str(APP_JSON))
+        if status == "已记录" and TENANT.APP_JSON and TENANT.APP_JSON.exists():
+            store = apply_mod.load_store(str(TENANT.APP_JSON))
             for a in store.get("applications", {}).values():
                 if a.get("company") and company and company_matches(company, a["company"]):
                     titles.append({"title": a.get("title"), "resume_version": a.get("resume_version"),
@@ -295,12 +470,12 @@ def merge_queue():
 # ---------------------------------------------------------------- 简历激活态
 
 def active_resume_id():
-    if RESUME_ACTIVE_PATH.exists():
-        d = copilot.load_json(RESUME_ACTIVE_PATH)
+    if TENANT.RESUME_ACTIVE_PATH.exists():
+        d = copilot.load_json(TENANT.RESUME_ACTIVE_PATH)
         aid = d.get("active")
         if aid:
             return aid
-    reg = copilot.load_resumes(REGISTRY_PATH)
+    reg = copilot.load_resumes(TENANT.REGISTRY_PATH)
     rs = reg.get("resumes", [])
     return rs[0].get("id") if rs else None
 
@@ -308,28 +483,28 @@ def active_resume_id():
 # ---------------------------------------------------------------- 调研入箱 / 建议
 
 def load_inbox():
-    if RESEARCH_INBOX_PATH.exists():
-        return copilot.load_json(RESEARCH_INBOX_PATH).get("requests", [])
+    if TENANT.RESEARCH_INBOX_PATH.exists():
+        return copilot.load_json(TENANT.RESEARCH_INBOX_PATH).get("requests", [])
     return []
 
 
 def save_inbox(reqs):
-    copilot.dump_json(RESEARCH_INBOX_PATH, {"requests": reqs})
+    copilot.dump_json(TENANT.RESEARCH_INBOX_PATH, {"requests": reqs})
 
 
 def load_suggestions():
-    if SUGGESTIONS_PATH.exists():
-        return copilot.load_json(SUGGESTIONS_PATH).get("items", [])
+    if TENANT.SUGGESTIONS_PATH.exists():
+        return copilot.load_json(TENANT.SUGGESTIONS_PATH).get("items", [])
     return []
 
 
 def save_suggestions(items):
-    copilot.dump_json(SUGGESTIONS_PATH, {"items": items})
+    copilot.dump_json(TENANT.SUGGESTIONS_PATH, {"items": items})
 
 
 def resume_file_path(r):
-    """解析简历 PDF 实际路径：注册的 path 失效时，按文件名到 RESUME_DIR 兜底查找
-    （云端布局下 resumes.json 里的 Windows 本机路径不存在，PDF 统一放 DATA_DIR/resumes）。
+    """解析简历 PDF 实际路径：注册的 path 失效时，按文件名到当前租户的 resumes/ 目录兜底查找
+    （云端布局下 resumes.json 里的 Windows 本机路径不存在，PDF 统一放租户目录 resumes/）。
 
     注意：云服务器是 POSIX，Windows 反斜杠不是分隔符，必须先归一化成 '/'，
     否则 Path(...).name 会是整串路径、兜底查找失败（本地 Windows 跑不出来这个 bug）。
@@ -337,9 +512,9 @@ def resume_file_path(r):
     raw = str(r.get("path") or "").replace("\\", "/")
     p = Path(raw)
     if not p.is_absolute():
-        p = DATA_DIR / p
+        p = TENANT.DATA_DIR / p
     if not p.exists():
-        cand = RESUME_DIR / Path(raw).name
+        cand = TENANT.RESUME_DIR / Path(raw).name
         if cand.exists():
             return cand
     return p
@@ -351,7 +526,7 @@ app = FastAPI(
     title="网申助手 Copilot 后端",
     # 云端（设置了 AC_TOKEN）关闭交互文档：/docs /redoc /openapi.json 会匿名泄露全部路由清单；
     # middleware 只管 /api/*，拦不住这三个框架自带端点。本地无 token 保持原样（行为不变）。
-    **({"docs_url": None, "redoc_url": None, "openapi_url": None} if AC_TOKEN else {}),
+    **({"docs_url": None, "redoc_url": None, "openapi_url": None} if AUTH_ENABLED else {}),
 )
 
 app.add_middleware(
@@ -364,37 +539,55 @@ app.add_middleware(
 
 
 # 后端构建号：桌面壳据此判断 8787 上跑的是不是当前代码（避免旧进程残留导致新接口 404）
-BUILD_ID = "2026-09-28a"
+BUILD_ID = "2026-09-29a"
 
 
 # ---- 访问令牌鉴权（仅云端：设置了 AC_TOKEN 才启用；本地不设 = 行为与旧版一致）----
 @app.middleware("http")
 async def _token_guard(request: Request, call_next):
-    """除 /api/health 外，所有 /api/* 要求 X-AC-Token 头或 ?token= 与 AC_TOKEN 匹配。
-    静态页（/ 与 /static/*）只是壳，不鉴权 —— 数据都走 /api/*。"""
-    if AC_TOKEN:
-        p = request.url.path
-        if p.startswith("/api/") and p != "/api/health":
-            given = (request.headers.get("X-AC-Token") or ""
-                     or request.query_params.get("token") or "")
-            if not hmac.compare_digest(str(given), AC_TOKEN):
-                return JSONResponse({"detail": "访问令牌缺失或不正确"}, status_code=401)
-    return await call_next(request)
+    """除 /api/health 外，所有 /api/* 要求 X-AC-Token 头或 ?token= 命中令牌表。
+
+    多租户：命中哪个令牌，就把该令牌对应的租户目录绑到当前请求（contextvars），
+    之后所有数据读写只看这一个目录 —— 令牌 A 的请求读不到令牌 B 的任何数据。
+    静态页（/ 与 /static/*）只是壳，不鉴权 —— 数据都走 /api/*。
+    """
+    p = request.url.path
+    if p.startswith("/api/") and p != "/api/health" and load_tokens():
+        given = (request.headers.get("X-AC-Token") or ""
+                 or request.query_params.get("token") or "")
+        meta = match_token(given)
+        if not meta:
+            return JSONResponse({"detail": "访问令牌缺失或不正确"}, status_code=401)
+        _tenant_var.set(tenant_paths(meta))
+    else:
+        _tenant_var.set(DEFAULT_PATHS)
+    try:
+        return await call_next(request)
+    finally:
+        _tenant_var.set(None)
 
 
 @app.get("/api/health")
 def health():
     # health 是唯一豁免鉴权的端点：云端模式下不回显内部路径（避免匿名泄露服务器布局）
-    out = {"ok": True, "build": BUILD_ID}
-    if not AC_TOKEN:
+    out = {"ok": True, "build": BUILD_ID, "auth": bool(load_tokens())}
+    if not load_tokens():
         out["autumn_skill_dir"] = _skill_dir or None
-        out["applications_json"] = str(APP_JSON) if APP_JSON else None
+        out["applications_json"] = str(TENANT.APP_JSON) if TENANT.APP_JSON else None
     return out
+
+
+@app.get("/api/whoami")
+def api_whoami():
+    """当前令牌对应的身份（面板用来显示"你是谁"，也用来确认数据确实分了租户）。"""
+    ps = current_paths()
+    return {"ok": True, "build": BUILD_ID, "tenant": ps.tid, "label": ps.label or "",
+            "multi_tenant": bool(load_tokens())}
 
 
 @app.get("/api/resumes")
 def api_resumes():
-    reg = copilot.load_resumes(REGISTRY_PATH)
+    reg = copilot.load_resumes(TENANT.REGISTRY_PATH)
     items = []
     for r in reg.get("resumes", []):
         item = {
@@ -413,7 +606,7 @@ def api_resumes():
 
 @app.post("/api/match")
 def api_match(req: MatchReq):
-    reg = copilot.load_resumes(REGISTRY_PATH)
+    reg = copilot.load_resumes(TENANT.REGISTRY_PATH)
     if not reg.get("resumes"):
         raise HTTPException(400, "还没有注册简历，先跑 register-resume")
     if not req.jd.strip():
@@ -425,16 +618,16 @@ def api_match(req: MatchReq):
 
 @app.post("/api/fill")
 def api_fill(req: FillReq):
-    if not PROFILE:
+    if not current_profile():
         raise HTTPException(500, "档案 profile.job.json 缺失")
     fields = req.fields
     if not isinstance(fields, list) or not fields:
         raise HTTPException(400, "fields 必须是非空列表")
-    payload = filler.build_fill_payload(fields, PROFILE)
+    payload = filler.build_fill_payload(fields, current_profile())
     # 若带了 JD，顺带给出简历推荐
     rec = None
     if req.jd and req.jd.strip():
-        reg = copilot.load_resumes(REGISTRY_PATH)
+        reg = copilot.load_resumes(TENANT.REGISTRY_PATH)
         if reg.get("resumes"):
             scored = sorted((copilot.score_resume(r, req.jd) for r in reg["resumes"]),
                             key=lambda x: -x["score"])
@@ -466,7 +659,7 @@ def api_queue_status(item_id: str, req: StatusReq):
 @app.put("/api/queue/{item_id}/bind")
 def api_queue_bind(item_id: str, req: BindReq):
     """行级简历绑定：把 resume_id 写入 queue.json 的 bind 字段。"""
-    reg = copilot.load_resumes(REGISTRY_PATH)
+    reg = copilot.load_resumes(TENANT.REGISTRY_PATH)
     ids = [r.get("id") for r in reg.get("resumes", [])]
     if req.resume_id not in ids:
         raise HTTPException(400, f"无效 resume id：{req.resume_id}")
@@ -478,7 +671,7 @@ def api_queue_bind(item_id: str, req: BindReq):
 
 @app.post("/api/mark")
 def api_mark(req: MarkReq):
-    if not APP_JSON or not APPLY_DIR:
+    if not TENANT.APP_JSON or not APPLY_DIR:
         raise HTTPException(500, "未找到 autumn 技能目录，无法写入 applications.json")
     if not req.company:
         raise HTTPException(400, "company 必填")
@@ -503,7 +696,7 @@ def api_mark(req: MarkReq):
     check_date = (req.date or date.today().isoformat())[:10]
     title_l = title.strip()
     try:
-        store = apply_mod.load_store(str(APP_JSON))
+        store = apply_mod.load_store(str(TENANT.APP_JSON))
     except Exception:
         store = {}
     for a in (store.get("applications") or {}).values():
@@ -516,8 +709,8 @@ def api_mark(req: MarkReq):
         if atitle == title_l or (not atitle and not title_l):
             raise HTTPException(409, f"已记录过：{req.company} · {atitle or title_l} · {check_date}")
     args = SimpleNamespace(
-        applications=str(APP_JSON),
-        state=str(STATE_JSON) if STATE_JSON else None,
+        applications=str(TENANT.APP_JSON),
+        state=str(TENANT.STATE_JSON) if TENANT.STATE_JSON else None,
         posting_id=None,
         company=req.company,
         title=title,
@@ -599,12 +792,12 @@ def api_assistant_context(host: str = "", request: Request = None):
         resume_id = active_resume_id() or ""
     resume_name = ""
     if resume_id:
-        for r in copilot.load_resumes(REGISTRY_PATH).get("resumes", []):
+        for r in copilot.load_resumes(TENANT.REGISTRY_PATH).get("resumes", []):
             if r.get("id") == resume_id:
                 resume_name = r.get("name", "")
                 break
     # 规则表（filler.FIELD_RULES + 档案取值）——与 assistant_bridge.RULES_JSON 同源
-    rules = [{"k": kw, "v": str(getter(PROFILE) or ""), "t": types}
+    rules = [{"k": kw, "v": str(getter(current_profile()) or ""), "t": types}
              for kw, getter, types in filler.FIELD_RULES]
     # 宽松同义词（filler.FIELD_SYN 单一真源）——与 assistant_bridge.SYN_JSON 同源
     syn = [{"re": pat, "name": name} for pat, name in filler.FIELD_SYN]
@@ -616,7 +809,7 @@ def api_assistant_context(host: str = "", request: Request = None):
         "resume_id": resume_id or "", "resume_name": resume_name,
         "role": (seed or {}).get("role", ""), "deadline": (seed or {}).get("deadline", ""),
         "ltype": (seed or {}).get("ltype", ""), "url": (seed or {}).get("url", ""),
-        "rules": rules, "values": assistant_profile_values(PROFILE),
+        "rules": rules, "values": assistant_profile_values(current_profile()),
         "syn": syn, "learned": learned, "backend": base,
     }
 
@@ -647,12 +840,12 @@ def api_queue_merge(req: QueueMergeReq):
                 if isinstance(it, dict) and (it.get("company") or "").strip() \
                         and (it.get("url") or "").strip():
                     extra.append(it)
-    if APP_JSON:
-        apps_path = str(APP_JSON)
+    if TENANT.APP_JSON:
+        apps_path = str(TENANT.APP_JSON)
     else:
         apps_path = ""
     import refresh_queue as rq
-    stat = rq.refresh(seed_path=SEED_PATH, apps_path=apps_path, out_path=SEED_PATH,
+    stat = rq.refresh(seed_path=TENANT.SEED_PATH, apps_path=apps_path, out_path=TENANT.SEED_PATH,
                       extra_items=extra, write=True)
     # 同步 queue.json：为新并入的 id 预置「未投」状态（已存在的状态不动）
     doc = load_queue_doc()
@@ -671,7 +864,7 @@ def api_queue_merge(req: QueueMergeReq):
 
 @app.get("/api/resume-file/{rid}")
 def api_resume_file(rid: str):
-    reg = copilot.load_resumes(REGISTRY_PATH)
+    reg = copilot.load_resumes(TENANT.REGISTRY_PATH)
     target = None
     for r in reg.get("resumes", []):
         if r.get("id") == rid:
@@ -695,11 +888,11 @@ def api_resume_active_get():
 
 @app.put("/api/resume/active")
 def api_resume_active_put(req: ActiveReq):
-    reg = copilot.load_resumes(REGISTRY_PATH)
+    reg = copilot.load_resumes(TENANT.REGISTRY_PATH)
     ids = [r.get("id") for r in reg.get("resumes", [])]
     if req.active not in ids:
         raise HTTPException(400, f"无效 resume id：{req.active}")
-    copilot.dump_json(RESUME_ACTIVE_PATH, {"active": req.active})
+    copilot.dump_json(TENANT.RESUME_ACTIVE_PATH, {"active": req.active})
     return {"active": req.active}
 
 
@@ -707,9 +900,9 @@ def api_resume_active_put(req: ActiveReq):
 
 @app.post("/api/resume")
 async def api_resume_upload(file: UploadFile = File(...), name: str = Form("")):
-    """上传简历（PDF/图片）：保存到 RESUME_DIR，注册进 resumes.json；
+    """上传简历（PDF/图片）：保存到当前租户的 resumes/ 目录，注册进该租户的 resumes.json；
     若是第一份简历则自动设为默认激活态。返回新注册的条目。"""
-    RESUME_DIR.mkdir(parents=True, exist_ok=True)
+    TENANT.RESUME_DIR.mkdir(parents=True, exist_ok=True)
     orig = (name or (file.filename or "resume.pdf")).strip() or "resume.pdf"
     ext = Path(orig).suffix or ".pdf"
     stem = Path(orig).stem or "resume"
@@ -717,21 +910,21 @@ async def api_resume_upload(file: UploadFile = File(...), name: str = Form("")):
     safe_stem = re.sub(r'[^\w\-\u4e00-\u9fff]+', '_', stem)[:60] or "resume"
     rid = "rs-" + uuid.uuid4().hex[:10]
     fname = f"{safe_stem}{ext}"
-    cand = RESUME_DIR / fname
+    cand = TENANT.RESUME_DIR / fname
     while cand.exists():
         fname = f"{safe_stem}_{uuid.uuid4().hex[:4]}{ext}"
-        cand = RESUME_DIR / fname
+        cand = TENANT.RESUME_DIR / fname
     contents = await file.read()
     cand.write_bytes(contents)
-    reg = copilot.load_resumes(REGISTRY_PATH)
+    reg = copilot.load_resumes(TENANT.REGISTRY_PATH)
     resumes = reg.get("resumes", [])
     entry = {"id": rid, "name": orig, "path": str(cand), "tags": []}
     resumes.append(entry)
     reg["resumes"] = resumes
-    copilot.dump_json(REGISTRY_PATH, reg)
+    copilot.dump_json(TENANT.REGISTRY_PATH, reg)
     # 第一份简历自动设为默认（写 resume_active.json）
     if not active_resume_id():
-        copilot.dump_json(RESUME_ACTIVE_PATH, {"active": rid})
+        copilot.dump_json(TENANT.RESUME_ACTIVE_PATH, {"active": rid})
     return {"ok": True, "resume": entry}
 
 
@@ -739,7 +932,7 @@ async def api_resume_upload(file: UploadFile = File(...), name: str = Form("")):
 def api_resume_delete(rid: str):
     """删除简历：从 resumes.json 移除条目并删除磁盘文件；
     若删掉的是默认简历，则改指下一份剩余简历，没有则清空默认态。"""
-    reg = copilot.load_resumes(REGISTRY_PATH)
+    reg = copilot.load_resumes(TENANT.REGISTRY_PATH)
     resumes = reg.get("resumes", [])
     target = next((r for r in resumes if r.get("id") == rid), None)
     if not target:
@@ -751,12 +944,12 @@ def api_resume_delete(rid: str):
     except Exception:
         pass
     reg["resumes"] = [r for r in resumes if r.get("id") != rid]
-    copilot.dump_json(REGISTRY_PATH, reg)
+    copilot.dump_json(TENANT.REGISTRY_PATH, reg)
     # 若删的是默认，则改指下一份或清空
     if active_resume_id() == rid:
         remaining = reg["resumes"]
         new_active = remaining[0]["id"] if remaining else ""
-        copilot.dump_json(RESUME_ACTIVE_PATH, {"active": new_active})
+        copilot.dump_json(TENANT.RESUME_ACTIVE_PATH, {"active": new_active})
     return {"ok": True, "active": active_resume_id()}
 
 
@@ -917,8 +1110,8 @@ def api_suggest_dismiss(sid: str):
 def load_field_memory():
     """全局字段记忆（不按站点分桶 —— 同一份档案在所有站点填的内容是一样的）。
     兼容早期的 hosts 分桶格式：启动时合并进全局。"""
-    if FIELD_MEMORY_PATH.exists():
-        doc = copilot.load_json(FIELD_MEMORY_PATH)
+    if TENANT.FIELD_MEMORY_PATH.exists():
+        doc = copilot.load_json(TENANT.FIELD_MEMORY_PATH)
         if isinstance(doc, dict):
             if not isinstance(doc.get("fields"), dict):
                 merged = {}
@@ -947,7 +1140,7 @@ def api_field_memory_post(req: FieldMemReq):
         if k and v:
             cur[k[:120]] = v[:500]
             added += 1
-    copilot.dump_json(FIELD_MEMORY_PATH, doc)
+    copilot.dump_json(TENANT.FIELD_MEMORY_PATH, doc)
     return {"ok": True, "added": added, "total": len(cur)}
 
 
@@ -965,14 +1158,11 @@ def api_field_memory_delete(key: str):
         if tk in cur:
             del cur[tk]
             removed = True
-    copilot.dump_json(FIELD_MEMORY_PATH, doc)
+    copilot.dump_json(TENANT.FIELD_MEMORY_PATH, doc)
     return {"ok": True, "removed": removed}
 
 
 # ---------------------------------------------------------------- 扫描诊断（回写本地，便于按站点适配）
-
-SCAN_DUMP_PATH = HERE / "scan_dump.json"
-
 
 class ScanDumpReq(BaseModel):
     url: str = ""
@@ -988,7 +1178,7 @@ def api_scan_dump(req: ScanDumpReq):
     """招聘页助手把「扫到了什么字段、填了几个」回传，落盘供离线诊断/按站点适配。"""
     import datetime as _dt
 
-    doc = copilot.load_json(SCAN_DUMP_PATH) if SCAN_DUMP_PATH.exists() else {}
+    doc = copilot.load_json(TENANT.SCAN_DUMP_PATH) if TENANT.SCAN_DUMP_PATH.exists() else {}
     if not isinstance(doc, dict) or not isinstance(doc.get("items"), list):
         doc = {"items": []}
     doc["items"].append({
@@ -997,7 +1187,7 @@ def api_scan_dump(req: ScanDumpReq):
         "count": req.count, "filled": req.filled, "fields": req.fields[:80],
     })
     doc["items"] = doc["items"][-20:]          # 只保留最近 20 次
-    copilot.dump_json(SCAN_DUMP_PATH, doc)
+    copilot.dump_json(TENANT.SCAN_DUMP_PATH, doc)
     return {"ok": True, "stored": len(doc["items"])}
 
 
@@ -1006,9 +1196,9 @@ def api_scan_dump(req: ScanDumpReq):
 @app.get("/api/profile")
 def api_profile_get():
     """返回当前 profile.job.json 全文（供面板展示/编辑）。"""
-    if not PROFILE_PATH.exists():
+    if not TENANT.PROFILE_PATH.exists():
         return {"profile": {}}
-    return {"profile": copilot.load_json(PROFILE_PATH)}
+    return {"profile": copilot.load_json(TENANT.PROFILE_PATH)}
 
 
 @app.put("/api/profile")
@@ -1020,11 +1210,11 @@ async def api_profile_put(request: Request):
         raise HTTPException(400, "请求体不是合法 JSON")
     if not isinstance(body, dict):
         raise HTTPException(400, "profile 必须是 JSON 对象")
-    doc = copilot.load_json(PROFILE_PATH) if PROFILE_PATH.exists() else {}
+    doc = copilot.load_json(TENANT.PROFILE_PATH) if TENANT.PROFILE_PATH.exists() else {}
     if not isinstance(doc, dict):
         doc = {}
     doc.update(body)
-    copilot.dump_json(PROFILE_PATH, doc)
+    copilot.dump_json(TENANT.PROFILE_PATH, doc)
     return {"ok": True, "profile": doc}
 
 
@@ -1052,7 +1242,7 @@ def api_bridge_poll():
 @app.get("/api/recommend")
 def api_recommend(company: str = "", role: str = "", cat: str = ""):
     """用 方向+类别+公司 拼伪 JD，按标签匹配打分，返回推荐简历与候选。"""
-    reg = copilot.load_resumes(REGISTRY_PATH)
+    reg = copilot.load_resumes(TENANT.REGISTRY_PATH)
     if not reg.get("resumes"):
         raise HTTPException(400, "还没有注册简历，先跑 register-resume")
     jd = " ".join(x for x in (role, cat, company) if x).strip()
@@ -1114,7 +1304,7 @@ def main():
     print(f"[网申助手后端] http://{args.host}:{args.port}"
           + ("  (公网模式，令牌鉴权已启用)" if AC_TOKEN else "  (仅本机)"))
     print(f"  仪表板: http://{args.host}:{args.port}/")
-    print(f"  投递库: {APP_JSON}")
+    print(f"  投递库: {TENANT.APP_JSON}")
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 
 
