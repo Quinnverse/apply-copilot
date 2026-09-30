@@ -17,7 +17,7 @@
 3. **Name semantics:** first/last split works for whitespace-separated test names; Chinese names without separators are deliberately left manual until the user can set given/family names explicitly.
 4. **Resume upload on real ATS:** synthetic PDF attachment to a local file input passed, but upload widgets on the tested ATS pages were not verified.
 5. **Distribution privacy:** `<all_urls>` content-script scope remains broad. Narrow installation/activation permission flow before broad release.
-6. **Shared deployment:** two-token isolation passes a disposable HTTP test, but the live service and its TLS/token configuration are unverified. The old packaging/deployment path could copy or overwrite private data and expose a token; the revised scripts are untested on the server. See `PRIVACY_SECURITY_AUDIT.md`; verify the live deployment before any shared pilot.
+6. **Shared deployment:** live synthetic two-token tests passed for profile, resume and field-memory isolation, but the running service remains the old build. It serves a generated bookmarklet publicly, binds the backend to all interfaces, and has no matching HTTPS certificate for `apply.quinnverse.tech`. The revised deployment scripts have not been run on the server. See `PRIVACY_SECURITY_AUDIT.md`; these are blocking issues before any shared pilot.
 
 ## Quality gates before changing this decision
 
