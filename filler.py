@@ -246,9 +246,15 @@ def build_fill_payload(fields, profile, threshold=0.5):
                             ("label", "name", "id", "placeholder")).lower()
         if re.search(r"\b(first[\s_-]*name|given[\s_-]*name)\b", name_hay) or \
                 re.search(r"\b(last[\s_-]*name|family[\s_-]*name|surname)\b", name_hay):
+            basic = profile.get("basic") or {}
+            is_first = bool(re.search(r"\b(first[\s_-]*name|given[\s_-]*name)\b", name_hay))
+            explicit = basic.get("given_name" if is_first else "family_name")
             parts = str((profile.get("basic") or {}).get("name") or "").strip().split()
-            if len(parts) >= 2:
-                value = parts[0] if re.search(r"\b(first[\s_-]*name|given[\s_-]*name)\b", name_hay) else " ".join(parts[1:])
+            if explicit:
+                value = str(explicit).strip()
+                best_score = 1.0
+            elif len(parts) >= 2:
+                value = parts[0] if is_first else " ".join(parts[1:])
                 best_score = 1.0
             else:
                 value = ""

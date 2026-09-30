@@ -18,6 +18,9 @@ def run():
     assert [p["value"] for p in filler.build_fill_payload(split_fields, PROFILE)] == ["Test", "User"]
     chinese_profile = {**PROFILE, "basic": {**PROFILE["basic"], "name": "张三"}}
     assert all(not p["value"] for p in filler.build_fill_payload(split_fields, chinese_profile))
+    explicit_chinese_profile = {**chinese_profile, "basic": {**chinese_profile["basic"],
+                                "family_name": "张", "given_name": "三"}}
+    assert [p["value"] for p in filler.build_fill_payload(split_fields, explicit_chinese_profile)] == ["三", "张"]
     results = {}
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True, channel="msedge")

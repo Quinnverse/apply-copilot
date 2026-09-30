@@ -40,6 +40,8 @@ async function loadProfile(){
   currentProfile=r.json.profile||{};
   const basic=currentProfile.basic||{}, education=(currentProfile.education||[])[0]||{};
   $('#profileName').value=basic.name||'';
+  $('#profileFamilyName').value=basic.family_name||'';
+  $('#profileGivenName').value=basic.given_name||'';
   $('#profileEmail').value=basic.email||'';
   $('#profilePhone').value=basic.phone||'';
   $('#profileSchool').value=education.school||'';
@@ -51,6 +53,8 @@ async function loadProfile(){
 $('#saveProfile').onclick=async()=>{
   const basic={...(currentProfile.basic||{})};
   basic.name=$('#profileName').value.trim();
+  basic.family_name=$('#profileFamilyName').value.trim();
+  basic.given_name=$('#profileGivenName').value.trim();
   basic.email=$('#profileEmail').value.trim();
   basic.phone=$('#profilePhone').value.trim();
   const education=[...(currentProfile.education||[])];
