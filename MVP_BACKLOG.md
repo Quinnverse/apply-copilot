@@ -36,3 +36,5 @@ Keep `profile.job.json` and existing kit. Fix backend startup, then extension pr
 - P1 4 partial: manual rescan works and toolbar reinjects after site DOM replacement; multi-step applications are still unverified.
 
 Next blocking work for unassisted distribution: test more ATS and multi-step pages with real user data under consent, add clear handling for Chinese names split across first/last fields, package the local backend/extension setup, and verify actual PDF upload on supported ATS pages. These were deliberately not represented as complete by local/synthetic tests.
+
+2026-09-30 setup increment: `start_backend.bat` no longer relies on a machine-specific Python path. It creates a project-local `.venv`, installs the declared backend requirements on first run, starts the loopback backend and opens the dashboard. Its Windows double-click flow is not yet UI-verified in this sprint.

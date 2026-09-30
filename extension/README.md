@@ -23,6 +23,8 @@ python server.py            # 默认 http://127.0.0.1:8787
 # 自定义端口： python server.py --port 9xxx
 ```
 
+Windows 下也可双击项目根目录的 `start_backend.bat`；它会创建项目内 `.venv` 并安装声明依赖。
+
 启动后打开 http://127.0.0.1:8787/ 即为状态化投递队列仪表板。
 
 ## 2. 加载扩展（Chrome / Edge，MV3）

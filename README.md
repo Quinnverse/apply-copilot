@@ -12,6 +12,8 @@ python -m venv .venv
 .venv/Scripts/python server.py
 ```
 
+Windows 用户也可直接双击 `start_backend.bat`：它会在项目内创建 `.venv`、安装 `deploy/requirements.txt`，然后打开本机仪表板。首次运行需要 Python 3.11+ 和网络连接。
+
 在 Chrome/Edge 加载 `extension/` 后，点扩展图标填写基础档案。打开网申页后，先在 popup 点「在当前网站启用填表助手」；之后点 🛠 →“填充表单”，逐项核对建议并勾选，再点“填充勾选字段”。最后检查网页，提交由本人完成。后端默认只监听本机，档案写在本机 `profile.job.json`。本地 HTTP API 限制浏览器跨域来源；如使用油猴脚本从招聘页直连后端，需要显式设置 `AC_ALLOWED_ORIGINS`。
 
 ## 它做什么 / 不做什么
