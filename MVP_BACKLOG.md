@@ -33,7 +33,7 @@ Keep `profile.job.json` and existing kit. Fix backend startup, then extension pr
 - P1 1 closed for tested controlled inputs through native setter plus events.
 - P1 2 partial: native radio/month/date supported in narrow cases; custom widgets remain manual.
 - P1 3 closed in code: the manifest now has no always-on content script or `<all_urls>` host permission. The popup asks the user to enable the current HTTP(S) site, then injects with `scripting`; the background reinjects only after a user-granted site reload. `tests/extension_permissions.py` verifies the manifest gate. A manual Chrome/Edge permission-flow check remains before broad distribution.
-- P1 4 partial: manual rescan works and toolbar reinjects after site DOM replacement; multi-step applications are still unverified.
+- P1 4 closed for light DOM: manual rescan works and toolbar reinjects after site DOM replacement. A synthetic two-step form fills each step only after a separate confirmation. Real ATS multi-step flows are still unverified.
 
 Next blocking work for unassisted distribution: test more ATS and multi-step pages with real user data under consent, package the local backend/extension setup, and verify actual PDF upload on supported ATS pages. These were deliberately not represented as complete by local/synthetic tests.
 

@@ -13,8 +13,8 @@
 | Native date | DETECTABLE | PARTIAL | UNVERIFIED | No ISO value conversion or validation. |
 | Date picker | UNVERIFIED | UNVERIFIED | UNSUPPORTED | Custom picker is site-specific. |
 | Textarea | TESTED | PARTIAL | PARTIAL | Fixture's custom answer is correctly left unfilled. |
-| Dynamically rendered | PARTIAL | PARTIAL | UNVERIFIED | Manual rescan on each Fill click; no automatic readiness cue. |
-| Multi-step | PARTIAL | PARTIAL | UNVERIFIED | Manual Fill per step; no end-to-end test. |
+| Dynamically rendered | TESTED | TESTED | TESTED | Synthetic step replacement then manual Fill rescans the current DOM; no automatic readiness cue. |
+| Multi-step | TESTED | TESTED | TESTED | Synthetic two-step form fills name, replaces step DOM, then fills email after a new user action. Real ATS multi-step flows remain unverified. |
 | iframe | UNSUPPORTED | UNSUPPORTED | UNSUPPORTED | `all_frames` absent. |
 | Shadow DOM | UNSUPPORTED | UNSUPPORTED | UNSUPPORTED | `querySelectorAll` does not enter shadow roots. |
 
@@ -27,5 +27,6 @@ ATS systems (Workday, Greenhouse, Lever and others): **UNVERIFIED**. A platform 
 | [Greenhouse-hosted Boldly](https://job-boards.greenhouse.io/boldly/jobs/4005594006) | 46 native elements | 4 basic fields | 4 written, 0 write errors | Many custom controls and questions remain manual. Toolbar initially vanished during site rendering; reinjection fixed it. False email mapping in custom question was removed. |
 | [Lever application](https://jobs.lever.co/usasurveyjob/fe664ea7-bfc2-4e3d-913b-1de52c59fa41/apply) | 5 | 3 basic fields | 3 written, 0 write errors | Location autocomplete and current company remain manual. |
 | Synthetic controlled input / select / radio / month / textarea | 6 | 4 suggestions | 3 written, 1 select rejected, custom answer untouched | `tests/extension_golden.py`; controlled state updated through native setter. |
+| Synthetic dynamically rendered two-step form | Step 1: 1; Step 2: 1 | 1 per step | Name then email written after separate confirmations | `tests/extension_golden.py`; no submit; represents only light-DOM step replacement. |
 
 Screenshots with synthetic data: [Greenhouse](evidence/greenhouse-after-fill.png), [Lever](evidence/lever-after-fill.png). The platform observations apply to these specific pages on this date, not every job on each ATS.

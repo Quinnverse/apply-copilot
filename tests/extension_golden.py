@@ -93,6 +93,26 @@ def run():
         assert results["complex"]["month"] == "2027-06"
         assert results["complex"]["custom"] == ""
         assert results["complex"]["submitted"] is False
+
+        multi = browser.new_page()
+        mount(multi, """<form id='application'>
+          <div id='step'><label for='step-name'>姓名</label><input id='step-name' name='name'>
+          <button id='next' type='button'>下一步</button></div>
+          <button type='submit'>Submit</button></form>
+          <script>document.querySelector('#next').onclick=()=>document.querySelector('#step').innerHTML=
+          '<label for="step-email">邮箱</label><input id="step-email" name="email">';</script>""")
+        multi.click("#ac-fill")
+        multi.locator("#ac-review button").click()
+        assert multi.locator("#step-name").input_value() == "Test User"
+        multi.click("#next")
+        multi.wait_for_timeout(100)
+        assert multi.locator("#ac-toggle").count() == 1
+        multi.click("#ac-fill")
+        multi.locator("#ac-review button").click()
+        results["multi_step"] = multi.evaluate("""() => ({email:document.querySelector('#step-email').value,
+          submitted:window.__submitted, status:document.querySelector('#ac-st').textContent})""")
+        assert results["multi_step"]["email"] == "test@example.invalid"
+        assert results["multi_step"]["submitted"] is False
         browser.close()
     print(json.dumps(results, ensure_ascii=False, indent=2))
 

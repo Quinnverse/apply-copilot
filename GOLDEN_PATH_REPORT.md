@@ -31,4 +31,4 @@ Command: `.venv/Scripts/python tests/full_extension.py`. A disposable profile (`
 
 The first Greenhouse run exposed a false positive: “Email Management for Executives...” was mapped to the email address. A guard for long/question-like labels removed that suggestion; rerun showed only the four basic fields. A loaded-extension run also revealed that Greenhouse removed the injected toolbar during page rendering. The content script now reinjects it when removed; rerun passed. These are observed bugs, not hypothetical compatibility claims.
 
-Remaining gaps: no real-user profile, no genuine application submission, no multi-step ATS trial, no resume upload verification on these pages. The extension only wrote synthetic data and stopped before submit.
+The synthetic suite also exercised a two-step light-DOM form: it filled the name after confirmation, replaced the step content, then rescanned and filled email after a separate confirmation. Real ATS multi-step flows, genuine application submission, and resume upload widgets on these pages remain unverified. The extension only wrote synthetic data and stopped before submit.
