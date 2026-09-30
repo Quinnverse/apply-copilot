@@ -17,7 +17,7 @@
 3. **Name semantics:** first/last split works for whitespace-separated test names; Chinese names without separators are deliberately left manual until the user can set given/family names explicitly.
 4. **Resume upload on real ATS:** synthetic PDF attachment to a local file input passed, but upload widgets on the tested ATS pages were not verified.
 5. **Distribution privacy:** `<all_urls>` content-script scope remains broad. Narrow installation/activation permission flow before broad release.
-6. **Shared deployment:** the security branch is live. A second disposable two-token test passed for profile, resume and field-memory isolation; the backend now binds loopback, the generated bookmarklet is gone, and tenant files have private permissions. The domain has no matching HTTPS certificate or working DNS resolution, so its HTTP application entry intentionally returns 503. See `PRIVACY_SECURITY_AUDIT.md`; DNS and HTTPS remain blocking before any shared pilot.
+6. **Shared deployment:** the security branch is live over HTTPS. A second disposable two-token test passed for profile, resume and field-memory isolation; the backend binds loopback, the generated bookmarklet is gone, tenant files have private permissions, the public health endpoint reports `auth_ready: true`, and anonymous profile access returns 401. HTTP redirects to HTTPS. See `PRIVACY_SECURITY_AUDIT.md`. This clears the deployment privacy gate for a small guided technical pilot, while the setup, form-coverage and broad-permission gates above still prevent unassisted distribution.
 
 ## Quality gates before changing this decision
 

@@ -31,8 +31,8 @@ if ! nginx -t; then
   exit 1
 fi
 systemctl reload nginx
-health=$(curl -fsS --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/api/health")
+health=$(curl --noproxy '*' -fsS --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/api/health")
 python3 -c 'import json,sys; h=json.loads(sys.argv[1]); assert h.get("auth") is True and h.get("auth_ready") is True' "$health"
-code=$(curl -s -o /dev/null -w '%{http_code}' --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/api/profile")
+code=$(curl --noproxy '*' -s -o /dev/null -w '%{http_code}' --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/api/profile")
 [ "$code" = "401" ] || { echo "HTTPS 匿名档案请求未被拒绝：$code" >&2; exit 1; }
 echo "HTTPS、鉴权与证书验收通过"
