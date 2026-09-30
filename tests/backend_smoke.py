@@ -16,6 +16,7 @@ with tempfile.TemporaryDirectory() as temp:
 
     with TestClient(server.app) as client:
         assert client.get("/api/health").json()["ok"]
+        assert client.get("/static/assistant.bookmarklet.js").status_code == 404
         profile = {"schema_version": 1, "basic": {"name": "Test User", "email": "test@example.invalid"}}
         assert client.put("/api/profile", json=profile).status_code == 200
         assert client.get("/api/profile").json()["profile"]["basic"]["name"] == "Test User"
@@ -30,6 +31,16 @@ with tempfile.TemporaryDirectory() as temp:
         assert "access-control-allow-origin" not in evil.headers
         extension = client.get("/api/profile", headers={"Origin": "chrome-extension://abcdefghijklmnop"})
         assert extension.headers.get("access-control-allow-origin") == "chrome-extension://abcdefghijklmnop"
+        original_argv = sys.argv[:]
+        try:
+            sys.argv = ["server.py", "--host", "0.0.0.0"]
+            try:
+                server.main()
+                raise AssertionError("unauthenticated public bind should fail")
+            except SystemExit as exc:
+                assert "拒绝" in str(exc)
+        finally:
+            sys.argv = original_argv
         print(json.dumps({"health": True, "profile": True, "mapping": mapped[0]["value"],
                           "recorded": len(applications), "duplicate_blocked": True,
                           "foreign_origin_blocked": True, "extension_origin_allowed": True}, indent=2))

@@ -45,6 +45,7 @@ kits/
 
 # ===== 运行期个人数据（会被后端自动重建，不入库） =====
 profile.job.json
+static/assistant.bookmarklet.js
 applications.json
 seen_postings.json
 queue.json

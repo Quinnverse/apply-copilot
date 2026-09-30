@@ -1,6 +1,6 @@
 # 多租户隔离（令牌分租户）
 
-> 一句话：**一个访问令牌 = 一个租户 = 一个自包含的数据目录。**
+> 一句话：**一个访问令牌 = 一个租户 = 一个自包含的数据目录。** 当前代码验证见 `PRIVACY_SECURITY_AUDIT.md`；生产部署状态仍需单独核对。
 > 谁的令牌进来，服务端就把这次请求的全部读写指向谁的目录；别的租户的字节一个都读不到。
 
 ## 为什么这么做
@@ -57,12 +57,12 @@ venv/bin/python tokens.py path t_xxxxxxxxxxxx         # 打印该租户目录
 令牌表按文件 mtime 自动重载 —— **增删令牌不用重启服务**。
 
 ⚠️ 踩过的坑：手动跑 `tokens.py` 时忘了 `export AC_DATA_DIR=...`，令牌表会写到 `/opt/copilot/tokens.json`，
-而服务读的是 `/opt/copilot/data/tokens.json` → 服务认为"没有配置任何令牌" → **鉴权被关闭、数据匿名可读**。
-每次操作后用 `curl http://127.0.0.1:8787/api/health` 确认 `"auth":true`。
+而服务读的是 `/opt/copilot/data/tokens.json`。新版服务模板设置 `AC_REQUIRE_AUTH=1`，令牌文件缺失或损坏时 API 拒绝请求；已部署的旧服务不自动获得这个保护。
+每次操作后用 `curl http://127.0.0.1:8787/api/health` 确认 `"auth":true` 且 `"auth_ready":true`。
 
 ## 鉴权与接口
 
-- 除 `/api/health` 外，所有 `/api/*` 必须带 `X-AC-Token` 头或 `?token=`，否则 401。
+- 除 `/api/health` 外，所有 `/api/*` 必须带 `X-AC-Token` 头，否则 401。URL 查询参数中的令牌不再接受，以免令牌进入访问日志或浏览器历史。
 - 新接口 `GET /api/whoami` → `{"tenant":"t_xxx","label":"张三","multi_tenant":true}`，
   插件面板标题下会显示「👤 张三 · 独立数据空间」，用来确认自己进的是哪份数据。
 - 令牌校验逐个 `hmac.compare_digest`，不早退。

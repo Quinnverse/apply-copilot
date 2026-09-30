@@ -4,7 +4,7 @@
 
 布局（与 deploy_server.sh 约定一致）：
   package/app/      server.py copilot.py filler.py company_util.py assistant_bridge.py refresh_queue.py
-  package/static/   dashboard.html assistant.bookmarklet.js
+  package/static/   dashboard.html (generated bookmarklet is never deployed)
   package/data/     profile.job.json resumes.json resume_active.json queue.json queue_seed.json
                     research_inbox.json / suggestions.json / field_memory.json / applications.json（存在才带）
                     resumes/*.pdf（简历 PDF，含个人信息，只进服务器）
@@ -23,7 +23,7 @@ PKG = PROJ / "deploy" / "package"
 
 APP_FILES = ["server.py", "local_apply.py", "copilot.py", "filler.py", "company_util.py",
              "assistant_bridge.py", "refresh_queue.py"]
-STATIC_FILES = ["dashboard.html", "assistant.bookmarklet.js"]
+STATIC_FILES = ["dashboard.html"]
 DATA_FILES = ["profile.job.json", "resumes.json", "resume_active.json",
               "queue.json", "queue_seed.json",
               "research_inbox.json", "suggestions.json", "field_memory.json"]

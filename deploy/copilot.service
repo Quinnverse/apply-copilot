@@ -14,6 +14,7 @@ RestartSec=3
 #    本文件只作模板，部署时请确保 .env 存在且权限 600。
 EnvironmentFile=/opt/copilot/.env
 Environment=AC_DATA_DIR=/opt/copilot/data
+Environment=AC_REQUIRE_AUTH=1
 Environment=AC_APPLY_DIR=/opt/copilot/skill/scripts
 Environment=AC_STATIC_DIR=/opt/copilot/static
 Environment=PYTHONUNBUFFERED=1

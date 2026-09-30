@@ -17,6 +17,7 @@
 3. **Name semantics:** first/last split works for whitespace-separated test names; Chinese names without separators are deliberately left manual until the user can set given/family names explicitly.
 4. **Resume upload on real ATS:** synthetic PDF attachment to a local file input passed, but upload widgets on the tested ATS pages were not verified.
 5. **Distribution privacy:** `<all_urls>` content-script scope remains broad. Narrow installation/activation permission flow before broad release.
+6. **Shared deployment:** two-token isolation passes a disposable HTTP test, but the live service and its TLS/token configuration are unverified. See `PRIVACY_SECURITY_AUDIT.md`; deploy the fail-closed service configuration before any shared pilot.
 
 ## Quality gates before changing this decision
 

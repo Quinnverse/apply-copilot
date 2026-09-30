@@ -21,7 +21,8 @@
   AC_APPLY_DIR   apply.py 所在目录（默认从 profile.paths.autumn_skill_dir 推导）
   AC_STATIC_DIR  静态资源目录（默认 ./static）
   AC_RESUME_DIR  简历 PDF 兜底目录（注册路径失效时按文件名到该目录找，默认 DATA_DIR/resumes）
-  AC_TOKEN       访问令牌：设置后除 /api/health 外所有 /api/* 需带 X-AC-Token 头或 ?token=
+  AC_TOKEN       访问令牌：设置后除 /api/health 外所有 /api/* 需带 X-AC-Token 头
+  AC_REQUIRE_AUTH=1  即使令牌表缺失/损坏也拒绝匿名 API 请求（共享部署建议启用）
   AC_HOST/AC_PORT 监听地址/端口（命令行 --host/--port 优先）
 
 ⚠️ 公网部署安全：服务器上以 systemd 绑定 0.0.0.0 时务必设置 AC_TOKEN；
@@ -177,14 +178,23 @@ def load_tokens():
                 raw = json.loads(TOKENS_FILE.read_text(encoding="utf-8")).get("tokens") or {}
             except Exception:
                 raw = {}
+        if not isinstance(raw, dict):
+            raw = {}
         mp = {}
+        invalid_tenant = False
         for tok, meta in raw.items():
             tok = str(tok or "").strip()
             if not tok:
                 continue
             meta = meta if isinstance(meta, dict) else {"label": str(meta)}
-            mp[tok] = {"label": str(meta.get("label") or ""),
-                       "tid": str(meta.get("tenant") or _tid_of(tok))}
+            tid = str(meta.get("tenant") or _tid_of(tok))
+            if tid != _tid_of(tok):
+                invalid_tenant = True
+                break
+            mp[tok] = {"label": str(meta.get("label") or ""), "tid": tid}
+        if invalid_tenant:
+            # Reject the table rather than allow two tokens to share a directory.
+            mp = {}
         for tok, label in _ENV_TOKENS:
             mp.setdefault(tok, {"label": label, "tid": _tid_of(tok)})
         if AC_TOKEN and AC_TOKEN not in mp:
@@ -269,7 +279,13 @@ class _TenantProxy:
 TENANT = _TenantProxy()
 
 # 是否需要令牌（import 期判定，仅用于决定是否关闭 /docs）
-AUTH_ENABLED = bool(AC_TOKEN or _ENV_TOKENS or TOKENS_FILE.exists())
+AUTH_ENABLED = bool(AC_TOKEN or _ENV_TOKENS or TOKENS_FILE.exists() or
+                    os.environ.get("AC_REQUIRE_AUTH", "").strip() == "1")
+
+
+def auth_required():
+    """Stay closed if a token source disappears or becomes unreadable at runtime."""
+    return AUTH_ENABLED or TOKENS_FILE.exists()
 
 # ==== END TENANT CONFIG ====
 
@@ -554,16 +570,18 @@ BUILD_ID = "2026-09-29a"
 # ---- 访问令牌鉴权（仅云端：设置了 AC_TOKEN 才启用；本地不设 = 行为与旧版一致）----
 @app.middleware("http")
 async def _token_guard(request: Request, call_next):
-    """除 /api/health 外，所有 /api/* 要求 X-AC-Token 头或 ?token= 命中令牌表。
+    """除 /api/health 外，启用鉴权时所有 /api/* 要求 X-AC-Token 命中令牌表。
 
     多租户：命中哪个令牌，就把该令牌对应的租户目录绑到当前请求（contextvars），
     之后所有数据读写只看这一个目录 —— 令牌 A 的请求读不到令牌 B 的任何数据。
-    静态页（/ 与 /static/*）只是壳，不鉴权 —— 数据都走 /api/*。
+    静态页（/ 与 /static/*）只是壳；含个人数据的生成书签脚本被禁止访问。
     """
     p = request.url.path
-    if p.startswith("/api/") and p != "/api/health" and load_tokens():
-        given = (request.headers.get("X-AC-Token") or ""
-                 or request.query_params.get("token") or "")
+    if p == "/static/assistant.bookmarklet.js":
+        # Generated bookmarklets embed profile values and must never be served publicly.
+        return JSONResponse({"detail": "not found"}, status_code=404)
+    if p.startswith("/api/") and p != "/api/health" and auth_required():
+        given = request.headers.get("X-AC-Token") or ""
         meta = match_token(given)
         if not meta:
             return JSONResponse({"detail": "访问令牌缺失或不正确"}, status_code=401)
@@ -579,8 +597,9 @@ async def _token_guard(request: Request, call_next):
 @app.get("/api/health")
 def health():
     # health 是唯一豁免鉴权的端点：云端模式下不回显内部路径（避免匿名泄露服务器布局）
-    out = {"ok": True, "build": BUILD_ID, "auth": bool(load_tokens())}
-    if not load_tokens():
+    out = {"ok": True, "build": BUILD_ID, "auth": auth_required(),
+           "auth_ready": bool(load_tokens()) if auth_required() else None}
+    if not auth_required():
         out["autumn_skill_dir"] = _skill_dir or None
         out["applications_json"] = str(TENANT.APP_JSON) if TENANT.APP_JSON else None
     return out
@@ -591,7 +610,7 @@ def api_whoami():
     """当前令牌对应的身份（面板用来显示"你是谁"，也用来确认数据确实分了租户）。"""
     ps = current_paths()
     return {"ok": True, "build": BUILD_ID, "tenant": ps.tid, "label": ps.label or "",
-            "multi_tenant": bool(load_tokens())}
+            "multi_tenant": auth_required()}
 
 
 @app.get("/api/resumes")
@@ -606,7 +625,7 @@ def api_resumes():
             "note": r.get("note", ""),
             "filename": resume_file_path(r).name,
         }
-        if not AC_TOKEN:
+        if not auth_required():
             # 本地模式保留原 path 字段（行为不变）；云端模式不回显本机 Windows 路径
             item["path"] = r.get("path")
         items.append(item)
@@ -1298,7 +1317,7 @@ def index():
     raise HTTPException(404, "dashboard.html 不存在")
 
 
-# 静态资源（assistant.bookmarklet.js 等），供仪表板同源加载，避免混合内容拦截
+# 静态资源供仪表板同源加载；生成书签脚本由中间件禁止访问
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
@@ -1309,9 +1328,11 @@ def main():
     ap.add_argument("--host", default=os.environ.get("AC_HOST", "127.0.0.1"))
     ap.add_argument("--port", type=int, default=int(os.environ.get("AC_PORT", "8787")))
     args = ap.parse_args()
+    if args.host not in ("127.0.0.1", "localhost", "::1") and not auth_required():
+        raise SystemExit("拒绝在非本机地址启动无令牌后端；请配置 AC_REQUIRE_AUTH=1 和用户令牌")
     import uvicorn
     print(f"[网申助手后端] http://{args.host}:{args.port}"
-          + ("  (公网模式，令牌鉴权已启用)" if AC_TOKEN else "  (仅本机)"))
+          + ("  (令牌鉴权已启用)" if auth_required() else "  (仅本机)"))
     print(f"  仪表板: http://{args.host}:{args.port}/")
     print(f"  投递库: {TENANT.APP_JSON}")
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")

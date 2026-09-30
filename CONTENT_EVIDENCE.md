@@ -12,6 +12,9 @@ Date: 2026-09-30. Use only these recorded observations in Quinnverse material; d
 | Controlled input needed native setter | Synthetic controlled-state fixture | State updates to `Test User` after confirmed fill. |
 | Resume file transport | Loaded MV3 extension + local backend + synthetic PDF | File attached to local fixture; actual ATS upload remains unverified. |
 | Live public ATS pages | `tests/full_extension.py` | Greenhouse-hosted Boldly: 46 detected / 4 filled; Lever: 5 detected / 3 filled. No submit click; POST requests blocked in test. |
+| Damaged token table could disable authentication | `server.py` previously guarded APIs only when `load_tokens()` returned entries | Auth now stays required after a configured token table is malformed, empty, or removed; `tests/tenant_isolation.py` verifies 401 responses. |
+| Generated bookmarklet embedded profile values in a public static path | `gen_bookmarklet.py` and the previous `/static` mount | `/static/assistant.bookmarklet.js` now returns 404; the generated file is excluded from Git and deployment packages. Historic distribution of generated copies was not verified. |
+| Separate users needed an actual isolation check | `tests/tenant_isolation.py` with disposable token A and B | Profile, resume, field memory, and application records stay in separate tenant directories in the local test. Live cloud isolation remains unverified. |
 
 Screenshots after synthetic fill: [Greenhouse](evidence/greenhouse-after-fill.png), [Lever](evidence/lever-after-fill.png). The pages and counts can change over time. Both images contain only synthetic applicant data.
 
