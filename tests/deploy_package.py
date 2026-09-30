@@ -24,7 +24,7 @@ with tempfile.TemporaryDirectory() as tmp:
     for name in module.ROOT_FILES:
         path = module.PROJ / "deploy" / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("config", encoding="utf-8")
+        path.write_bytes(b"line 1\r\nline 2\r\n" if name.endswith(".sh") else b"config")
     apply = module.SKILL / "scripts" / "apply.py"
     apply.parent.mkdir(parents=True, exist_ok=True)
     apply.write_text("code", encoding="utf-8")
@@ -33,6 +33,7 @@ with tempfile.TemporaryDirectory() as tmp:
     assert not (module.PKG / "data").exists()
     assert not (module.PKG / "skill" / "state").exists()
     assert not any("PRIVATE" in p.read_text(encoding="utf-8") for p in module.PKG.rglob("*") if p.is_file())
+    assert b"\r\n" not in (module.PKG / "deploy_server.sh").read_bytes()
     (module.PKG / "data").mkdir()
     try:
         module.main()

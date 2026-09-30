@@ -20,7 +20,8 @@ PKG = PROJ / "deploy" / "package"
 APP_FILES = ["server.py", "local_apply.py", "copilot.py", "filler.py", "company_util.py",
              "assistant_bridge.py", "refresh_queue.py"]
 STATIC_FILES = ["dashboard.html"]
-ROOT_FILES = ["requirements.txt", "copilot.service", "deploy_server.sh"]
+ROOT_FILES = ["requirements.txt", "copilot.service", "deploy_server.sh",
+              "apply_http_hold.conf", "apply_https.conf", "enable_apply_https.sh"]
 
 
 def cp(src: Path, dst: Path):
@@ -28,6 +29,8 @@ def cp(src: Path, dst: Path):
         raise FileNotFoundError(f"部署所需代码不存在: {src}")
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dst)
+    if dst.suffix == ".sh":
+        dst.write_bytes(dst.read_bytes().replace(b"\r\n", b"\n"))
     print(f"  ok: {dst.relative_to(PKG)}")
 
 

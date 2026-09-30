@@ -3,7 +3,7 @@
 # 前置：部署包已解压到 /tmp/copilot_deploy（只含代码、静态页和服务模板）
 set -euo pipefail
 
-DEPLOY_SRC="/tmp/copilot_deploy"
+DEPLOY_SRC="${AC_DEPLOY_SRC:-/tmp/copilot_deploy}"
 DEST="/opt/copilot"
 PORT=8787
 MIRROR="https://mirrors.cloud.tencent.com/pypi/simple"
@@ -16,6 +16,7 @@ echo "== [1/5] 校验部署包与令牌配置 =="
 [ -f "$DEST/data/tokens.json" ] || { echo "缺少 $DEST/data/tokens.json" >&2; exit 1; }
 [ "$(stat -c %a "$DEST/.env")" = "600" ] || { echo ".env 权限必须为 600" >&2; exit 1; }
 [ "$(stat -c %a "$DEST/data/tokens.json")" = "600" ] || { echo "tokens.json 权限必须为 600" >&2; exit 1; }
+chmod -R go-rwx "$DEST/data"
 echo "== [2/5] 停旧服务 + 布局代码文件 =="
 systemctl stop copilot 2>/dev/null || true
 mkdir -p "$DEST"
@@ -23,6 +24,7 @@ cp -a "$DEPLOY_SRC/app/." "$DEST/"
 mkdir -p "$DEST/static" "$DEST/skill/scripts"
 cp -a "$DEPLOY_SRC/static/." "$DEST/static/"
 cp -a "$DEPLOY_SRC/skill/scripts/." "$DEST/skill/scripts/"
+cp "$DEPLOY_SRC/apply_https.conf" "$DEST/apply_https.conf"
 rm -f "$DEST/static/assistant.bookmarklet.js"
 echo "布局完成：$DEST/{server.py,static,data,skill}"
 
@@ -35,9 +37,12 @@ fi
 echo "端口 $PORT 空闲"
 
 echo "== [4/5] 建 venv + 装依赖（腾讯镜像）=="
-python3.11 -m venv "$DEST/venv" 2>/dev/null || python3 -m venv "$DEST/venv"
-"$DEST/venv/bin/pip" install --upgrade pip -q -i "$MIRROR"
-"$DEST/venv/bin/pip" install -q -r "$DEPLOY_SRC/requirements.txt" -i "$MIRROR"
+if [ ! -x "$DEST/venv/bin/python" ]; then
+  python3.11 -m venv "$DEST/venv" 2>/dev/null || python3 -m venv "$DEST/venv"
+fi
+if ! "$DEST/venv/bin/python" -c 'import fastapi, uvicorn, pydantic, multipart' 2>/dev/null; then
+  "$DEST/venv/bin/pip" install -q -r "$DEPLOY_SRC/requirements.txt" -i "$MIRROR"
+fi
 "$DEST/venv/bin/python" -c "import fastapi, uvicorn, pydantic; print('deps OK:', fastapi.__version__, uvicorn.__version__)"
 
 echo "== [5/5] 安装 systemd 服务并验收 =="
