@@ -156,7 +156,13 @@ body.sb .actions button{font-size:10.5px;padding:3px 6px}
 // 本地后端未设置 AC_TOKEN 时传空令牌即可，不报错；401 时提示并重弹输入。
 let API = localStorage.getItem('ac:backend') || '';       // '' = 同源
 let TOKEN = localStorage.getItem('ac:token') || '';
+function safeBackend(raw){
+  try { const u=new URL(raw || location.origin); return u.protocol==='https:' ||
+    (u.protocol==='http:' && /^(127\.0\.0\.1|localhost|\[::1\])$/.test(u.hostname)); }
+  catch(e){ return false; }
+}
 function apiFetch(url, opts){
+  if(!safeBackend(API || location.origin)) return Promise.reject(new Error('远程后端必须使用 HTTPS'));
   opts = opts || {};
   opts.headers = Object.assign({'X-AC-Token': TOKEN}, opts.headers || {});
   return fetch(url, opts).then(function(r){
@@ -169,6 +175,7 @@ function promptConfig(force){
   var bk = prompt('后端地址（留空 = 当前域名；本地后端填 http://127.0.0.1:8787）',
                   localStorage.getItem('ac:backend') || location.origin);
   if(bk === null) return;
+  if(!safeBackend(bk.trim() || location.origin)){ toast('远程后端必须使用 HTTPS'); return; }
   var tk = prompt('访问令牌（本地无令牌模式留空即可）', localStorage.getItem('ac:token') || '');
   if(tk === null) return;
   API = bk.trim().replace(/\/+$/,'');

@@ -4,6 +4,7 @@ body{width:340px;font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-
 .sec{padding:11px 14px;border-bottom:1px solid #eef1f5}
 .ttl{font-size:12px;color:#5f6368;font-weight:600;margin-bottom:7px}
 .sel{width:100%;padding:7px 8px;border:1px solid #cfd6df;border-radius:7px;font-size:13px;background:#fff;margin-bottom:7px}
+.sec input:not([type=checkbox]){width:100%;padding:7px 8px;border:1px solid #cfd6df;border-radius:7px;font-size:12px;margin-bottom:6px}
 textarea{width:100%;min-height:62px;border:1px solid #cfd6df;border-radius:7px;padding:7px 8px;font-size:12px;font-family:inherit;resize:vertical;margin-bottom:7px}
 .btn{width:100%;background:#185FA5;color:#fff;border:none;border-radius:8px;padding:8px;font-size:13px;font-weight:600;cursor:pointer;margin-top:4px}
 .btn:hover{opacity:.92}

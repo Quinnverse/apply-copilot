@@ -3,6 +3,7 @@
 _d_token.txt
 *.token
 .env
+.venv/
 
 # ===== 任何含真实令牌的服务配置副本（模板 deploy/copilot.service 用 EnvironmentFile） =====
 copilot.service.local
@@ -44,6 +45,9 @@ kits/
 
 # ===== 运行期个人数据（会被后端自动重建，不入库） =====
 profile.job.json
+static/assistant.bookmarklet.js
+applications.json
+seen_postings.json
 queue.json
 resumes.json
 resume_active.json

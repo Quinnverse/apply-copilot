@@ -2,8 +2,7 @@
 // @name         网申助手 Copilot
 // @namespace    apply-copilot
 // @version      1.3.0
-// @description  各厂官网网申全链路：自动填表 / 自动挂简历 / 提交闸门 / 成功侦测自动记账。
-//               红线：绝不代登录、绝不碰验证码；自动提交是设置项且默认关闭，默认只高亮提交按钮由用户本人点。
+// @description  网申辅助：字段建议、简历附件与投递记录；最终提交只由用户本人执行。
 // @author       apply-copilot
 // @match        *://*/*
 // @grant        GM_xmlhttpRequest
@@ -15,7 +14,7 @@
 // @grant        GM_listValues
 // @connect      127.0.0.1
 // @connect      localhost
-// @connect      124.223.15.11
+// @connect      apply.quinnverse.tech
 // @run-at       document-idle
 // @noframes
 // ==/UserScript==
@@ -24,7 +23,7 @@
  *  开机  GET {backend}/api/assistant-context?host=... → 未命中公司且未手动启用 → 静默退出
  *  填表  scanFields → buildPayload（LEARNED→RULES→关键词→SYN→type 兜底 5 级匹配）→ setVal
  *  挂简历  GM blob 拉 /api/resume-file/{rid} → DataTransfer → input[type=file].files
- *  提交闸门  高亮提交按钮；autoSubmit（默认关）开时才代点
+ *  提交闸门  只高亮提交按钮，用户本人点击
  *  记账  URL/文案命中成功关键词 → GM 去重（同公司同天一次）→ POST /api/mark
  *
  *  设计约束：核心逻辑（填表/挂简历/侦测/记账）一律经 GMshim 访问 GM 能力，
@@ -129,7 +128,14 @@
 
   // ================================================================ 状态
   var DEFAULT_BACKEND = 'http://127.0.0.1:8787';
-  var SET = { backend: DEFAULT_BACKEND, token: '', autoFill: '1', autoAttach: '1', autoSubmit: '0', autoCloseTab: '0', pickMode: '1', debug: '0' };
+  var SET = { backend: DEFAULT_BACKEND, token: '', autoFill: '0', autoAttach: '0', autoCloseTab: '0', pickMode: '1', debug: '0' };
+  function safeBackend(raw) {
+    try {
+      var url = new URL(raw);
+      return url.protocol === 'https:' ||
+        (url.protocol === 'http:' && /^(127\.0\.0\.1|localhost|\[::1\])$/.test(url.hostname));
+    } catch (e) { return false; }
+  }
   var CTX = null;           // /api/assistant-context 原始返回
   var RULES = [], VALUES = [], LEARNED = {}, SYN = [];
   var COMPANY = '', COMPANY_SRC = '', ROLE = '', LTYPE = '', RESUME_ID = '', RESUME_NAME = '';
@@ -550,17 +556,7 @@
         else b.style.outline = '3px solid #1F7A4D';
       });
       if (btns.length) {
-        logLine('🔎 已高亮 ' + btns.length + ' 个疑似提交按钮' +
-          (SET.autoSubmit === '1' ? '（⚠️ autoSubmit 已开：2 秒后自动点击第 1 个）' : '（请本人确认后点击提交）'));
-      }
-      if (SET.autoSubmit === '1' && btns.length) {
-        var target = btns[0];
-        setTimeout(function () {
-          try {
-            logLine('⚠️ autoSubmit 已代点：' + String(target.innerText || target.value || 'submit').slice(0, 20));
-            target.click();
-          } catch (e) {}
-        }, 2000);
+        logLine('🔎 已高亮 ' + btns.length + ' 个疑似提交按钮（请本人确认后点击提交）');
       }
     } catch (e) {}
   }
@@ -866,7 +862,6 @@
     }
     return chk('set-fill', '页面加载自动填表', SET.autoFill)
       + chk('set-attach', '自动挂简历（找到 pdf 上传框就挂）', SET.autoAttach)
-      + chk('set-submit', '自动提交（<b>默认关！开了才会代点提交</b>）', SET.autoSubmit)
       + chk('set-close', '记账成功后自动关标签页', SET.autoCloseTab)
       + chk('set-pick', '点选填充模式（默认开，点输入框即弹选值）', SET.pickMode)
       + chk('set-debug', '调试日志（控制台输出运行信息）', SET.debug)
@@ -878,25 +873,22 @@
     box.querySelector('#set-save').onclick = function () {
       SET.autoFill = box.querySelector('#set-fill').checked ? '1' : '0';
       SET.autoAttach = box.querySelector('#set-attach').checked ? '1' : '0';
-      SET.autoSubmit = box.querySelector('#set-submit').checked ? '1' : '0';
       SET.autoCloseTab = box.querySelector('#set-close').checked ? '1' : '0';
       SET.pickMode = box.querySelector('#set-pick').checked ? '1' : '0';
       SET.debug = box.querySelector('#set-debug').checked ? '1' : '0';
       var bk = box.querySelector('#set-backend').value.trim();
-      // 云端后端是任意 http(s) 地址（如 http://124.223.15.11:8787），不再仅限本机
-      if (/^https?:\/\/\S+\/?$/i.test(bk)) {
-        SET.backend = bk.replace(/\/$/, '');
-      }
+      if (!safeBackend(bk)) { toast('远程后端必须使用 HTTPS'); return Promise.resolve(); }
+      SET.backend = bk.replace(/\/$/, '');
       SET.token = box.querySelector('#set-token').value.trim();
       return Promise.all([
         GMshim.set('ac:backend', SET.backend), GMshim.set('ac:token', SET.token),
         GMshim.set('ac:autoFill', SET.autoFill),
-        GMshim.set('ac:autoAttach', SET.autoAttach), GMshim.set('ac:autoSubmit', SET.autoSubmit),
+        GMshim.set('ac:autoAttach', SET.autoAttach), GMshim.set('ac:autoSubmit', '0'),
         GMshim.set('ac:autoCloseTab', SET.autoCloseTab),
         GMshim.set('ac:pickMode', SET.pickMode), GMshim.set('ac:debug', SET.debug)
       ]).then(function () {
         toast('设置已保存');
-        logLine('⚙ 设置已保存（autoSubmit=' + (SET.autoSubmit === '1' ? '开' : '关') + '）');
+        logLine('⚙ 设置已保存；最终提交始终由本人执行');
         // 令牌可能刚换过：重新确认身份（谁的令牌就进谁的数据空间）
         fetchWhoami().then(function (w) {
           if (w && w.multi) logLine('👤 当前身份：' + (w.label || '未命名') + '（独立数据空间）');
@@ -1317,7 +1309,7 @@
   }
 
   // ================================================================ SPA 导航 + DOM 变更 → 防抖重扫
-  // Bug#6：捕获阶段监听全页点击，识别"提交类按钮被真实点击"（autoSubmit 代点也走这里）
+  // 捕获阶段监听全页点击，识别用户点击的提交类按钮。
   document.addEventListener('click', function (e) {
     try {
       var t = e.target;
@@ -1384,17 +1376,16 @@
   function loadSettings() {
     return Promise.all([
       GMshim.get('ac:backend'), GMshim.get('ac:autoFill'), GMshim.get('ac:autoAttach'),
-      GMshim.get('ac:autoSubmit'), GMshim.get('ac:autoCloseTab'), GMshim.get('ac:token'),
+      GMshim.get('ac:autoCloseTab'), GMshim.get('ac:token'),
       GMshim.get('ac:pickMode'), GMshim.get('ac:debug')
     ]).then(function (r) {
-      if (r[0] && /^https?:\/\//.test(r[0])) SET.backend = r[0];
+      if (r[0] && safeBackend(r[0])) SET.backend = r[0];
       if (r[1]) SET.autoFill = r[1];
       if (r[2]) SET.autoAttach = r[2];
-      if (r[3]) SET.autoSubmit = r[3];
-      if (r[4]) SET.autoCloseTab = r[4];
-      SET.token = r[5] || '';
-      if (r[6]) SET.pickMode = r[6];
-      if (r[7]) SET.debug = r[7];
+      if (r[3]) SET.autoCloseTab = r[3];
+      SET.token = r[4] || '';
+      if (r[5]) SET.pickMode = r[5];
+      if (r[6]) SET.debug = r[6];
     });
   }
   // 后端完全不可达时的兜底：仅当用户手动启用过该站点才注入空上下文（Bug#5：

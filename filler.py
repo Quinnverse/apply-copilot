@@ -205,6 +205,13 @@ def build_fill_payload(fields, profile, threshold=0.5):
     """
     payload = []
     for f in fields:
+        label_text = str(f.get("label") or "").strip()
+        # Long prompts often contain contact-field words in a different sense
+        # (e.g. "Email Management for Executives..."). Leave them to the user.
+        if len(re.findall(r"[A-Za-z]+", label_text)) > 3 or "?" in label_text or "？" in label_text:
+            payload.append({"label": label_text or "未知字段", "selector": "", "type": f.get("type"),
+                            "value": "", "confidence": 0.0})
+            continue
         best_rule = None
         best_score = 0.0
         for keywords, getter, types in FIELD_RULES:
@@ -234,6 +241,24 @@ def build_fill_payload(fields, profile, threshold=0.5):
         if value and str(f.get("type", "")).lower() == "select" and is_multi_value(value):
             value = ""
             best_score = 0.0
+        # ATS forms often split names. Reusing the full name in both fields is wrong.
+        name_hay = " ".join(str(f.get(k, "") or "") for k in
+                            ("label", "name", "id", "placeholder")).lower()
+        if re.search(r"\b(first[\s_-]*name|given[\s_-]*name)\b", name_hay) or \
+                re.search(r"\b(last[\s_-]*name|family[\s_-]*name|surname)\b", name_hay):
+            basic = profile.get("basic") or {}
+            is_first = bool(re.search(r"\b(first[\s_-]*name|given[\s_-]*name)\b", name_hay))
+            explicit = basic.get("given_name" if is_first else "family_name")
+            parts = str((profile.get("basic") or {}).get("name") or "").strip().split()
+            if explicit:
+                value = str(explicit).strip()
+                best_score = 1.0
+            elif len(parts) >= 2:
+                value = parts[0] if is_first else " ".join(parts[1:])
+                best_score = 1.0
+            else:
+                value = ""
+                best_score = 0.0
         # 构造 CSS 选择器（优先 id，其次 name）
         sel = ""
         if f.get("id"):

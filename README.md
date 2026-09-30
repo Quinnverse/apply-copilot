@@ -1,6 +1,20 @@
 # 网申助手 Application Copilot
 
-一个**半自动、人类在环**的校招网申辅助工具（Python 3.11+，仅标准库）。
+一个**半自动、人类在环**的校招网申辅助工具（Python 3.11+；CLI 使用标准库，后端依赖 `deploy/requirements.txt`）。
+
+## 当前 Browser Extension MVP
+
+先读 [MVP_READINESS_REPORT.md](MVP_READINESS_REPORT.md)、[PRODUCT_AUDIT.md](PRODUCT_AUDIT.md) 和 [EXTENSION_AUDIT.md](EXTENSION_AUDIT.md)。后端可从干净仓库启动：
+
+```bash
+python -m venv .venv
+.venv/Scripts/python -m pip install -r deploy/requirements.txt  # Windows
+.venv/Scripts/python server.py
+```
+
+Windows 用户也可直接双击 `start_backend.bat`：它会在项目内创建 `.venv`、安装 `deploy/requirements.txt`，然后打开本机仪表板。首次运行需要 Python 3.11+ 和网络连接。
+
+在 Chrome/Edge 加载 `extension/` 后，点扩展图标填写基础档案。打开网申页后，先在 popup 点「在当前网站启用填表助手」；之后点 🛠 →“填充表单”，逐项核对建议并勾选，再点“填充勾选字段”。最后检查网页，提交由本人完成。后端默认只监听本机，档案写在本机 `profile.job.json`。本地 HTTP API 限制浏览器跨域来源；如使用油猴脚本从招聘页直连后端，需要显式设置 `AC_ALLOWED_ORIGINS`。
 
 ## 它做什么 / 不做什么
 
@@ -86,15 +100,14 @@ python server.py                 # 启动本地后端 http://127.0.0.1:8787
 
 详细安装与用法见 `extension/README.md`。
 
-## 零安装方案：书签小工具（推荐，无需开发者模式）
+## 旧版书签工具（仅限本机自行使用）
 
-不会 Chrome 开发者模式也没关系——用浏览器自带的「书签小工具」即可，不用装任何扩展：
+`gen_bookmarklet.py` 会把档案值直接写入 `static/assistant.bookmarklet.js`。这个文件包含个人信息，不再提交到 Git、部署到服务器或经 `/static` 提供下载。当前推荐使用上面的扩展流程。
 
 1. `cd apply-copilot && python server.py` 启动后端。
-2. 浏览器打开 http://127.0.0.1:8787/ ，把页面顶部「🧩 网申助手·填充」书签**拖到书签栏**（若书签栏没显示按 `Ctrl/Cmd+Shift+B`）。
-3. 之后在任意网申页点一下该书签 → 右下角浮标出现 → 「① 填充表单」自动填值；投完点「② 打开仪表板·记录」回本页点「标记已记录」。
+2. 本机运行 `python gen_bookmarklet.py` 后，只在本机读取生成文件；不要把文件上传、分享或复制到公共网页。
 
-书签是**纯前端**的：你的档案已内嵌其中、不连本地后端，所以在 https 网申页也不会被浏览器的"混合内容"拦截（这是 MV3 扩展从 https 页连本地 http 后端的硬伤）。由 `gen_bookmarklet.py` 生成 `static/assistant.bookmarklet.js`。
+该工具是旧版路径，不经过扩展的逐字段确认与兼容性回归。
 
 **合规边界不变**：不代登录、不破解验证码、不自动提交；提交永远是你本人。
 
