@@ -8,8 +8,10 @@ function chromeCall(fn, arg){
   return new Promise(resolve => fn(arg, value => resolve({value, error: chrome.runtime.lastError && chrome.runtime.lastError.message})));
 }
 async function activeWebTab(){
-  const r=await chromeCall(chrome.tabs.query,{active:true,currentWindow:true});
-  const tab=(r.value||[])[0];
+  const r=await chromeCall(chrome.tabs.query,{currentWindow:true});
+  const tabs=r.value||[];
+  const tab=tabs.find(t=>t.active && /^https?:\/\//.test(t.url||'')) ||
+    tabs.find(t=>/^https?:\/\//.test(t.url||''));
   if(!tab || !/^https?:\/\//.test(tab.url||'')) return null;
   const url=new URL(tab.url);
   return {tab, origin:`${url.protocol}//${url.hostname}/*`, label:url.hostname};

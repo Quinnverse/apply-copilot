@@ -23,6 +23,8 @@ Live ATS filling was not run: no user credentials or test accounts were supplied
 
 Command: `.venv/Scripts/python tests/full_extension.py`. A disposable profile (`Test User`, `test@example.invalid`, synthetic phone) was served by the real FastAPI backend. Edge loaded the unpacked MV3 extension. All POST requests from the public ATS tabs were blocked in the test harness. No submit control was clicked.
 
+After the per-site permission change, the same loaded-extension harness confirmed that the local form has no toolbar before permission is granted. Headless Chromium cannot approve the browser's optional-host permission prompt, so the post-grant injection path still requires a manual Chrome/Edge check. `tests/extension_golden.py` continues to verify the confirmed fill behavior with the real content script and synthetic data.
+
 | Page | Detected | Suggested / written | Confirmation | Result |
 |---|---:|---:|---|---|
 | Local `test_form.html` | 8 | 6 | Name empty before confirmation; `Test User` after | Pass; synthetic PDF attached to native file input |

@@ -21,6 +21,7 @@ Date: 2026-09-30. Use only these recorded observations in Quinnverse material; d
 | Always-on extension injection was broader than the product needed | MV3 manifest used `<all_urls>` solely to show the toolbar | The extension now requests the current site's permission from the popup and injects only after the user enables that site. Manifest regression verifies no always-on content script; real browser permission UX remains to be checked. |
 | Chinese full names cannot safely be guessed into First/Last name fields | Existing mapping left `张三` empty while whitespace-separated names were split | Popup now lets the applicant explicitly provide family and given names; regression verifies those values map without heuristics. |
 | A multi-step form may replace its DOM between steps | Synthetic two-step fixture in `tests/extension_golden.py` | The retained assistant rescan found and filled the second step only after the user opened Fill again; it did not submit the form. |
+| Optional host permissions are not auto-approved in headless Chromium | Loaded unpacked MV3 extension in `tests/full_extension.py` | Before grant, no toolbar was injected and popup reported the site unapproved. The real browser approval path must be checked manually. |
 
 Screenshots after synthetic fill: [Greenhouse](evidence/greenhouse-after-fill.png), [Lever](evidence/lever-after-fill.png). The pages and counts can change over time. Both images contain only synthetic applicant data.
 

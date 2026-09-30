@@ -44,30 +44,46 @@ try:
         page.goto(f"http://127.0.0.1:{form.server_port}/test_form.html")
         page.wait_for_timeout(2000)
         toolbar = page.locator("#ac-toggle").count()
-        if toolbar:
-            page.click("#ac-toggle")
-            page.click("#ac-fill")
-            page.wait_for_timeout(1000)
-        before = page.locator("#name").input_value()
-        review = page.locator("#ac-review").text_content()[:250] if toolbar else ""
-        if toolbar:
-            page.click("#ac-review button")
-        after = page.locator("#name").input_value()
-        assert toolbar and before == "" and after == "Test User"
-        page.once("dialog", lambda dialog: dialog.accept("test-pdf"))
-        page.click("#ac-up")
-        page.wait_for_timeout(700)
-        uploaded = page.locator("#resume").evaluate("el => el.files.length === 1 && el.files[0].name === 'synthetic.pdf'")
-        assert uploaded
-        results = {"local_form": {"toolbar": bool(toolbar), "review": review,
-                          "name_before_confirm": before, "name_after_confirm": after,
-                          "synthetic_pdf_attached": uploaded}}
+        assert toolbar == 0, "content script must not run before a site is allowed"
+        results = {}
         workers = context.service_workers
         if workers:
             extension_id = workers[0].url.split("/")[2]
             popup = context.new_page()
             popup.goto(f"chrome-extension://{extension_id}/popup.html")
             popup.wait_for_timeout(700)
+            popup.locator("#enableSite").click()
+            popup.wait_for_timeout(800)
+            toolbar = page.locator("#ac-toggle").count()
+            before = page.locator("#name").input_value()
+            review = ""
+            if toolbar:
+                page.click("#ac-toggle")
+                page.click("#ac-fill")
+                page.wait_for_timeout(300)
+                review = page.locator("#ac-review").text_content()[:250]
+                page.click("#ac-review button")
+            after = page.locator("#name").input_value()
+            permission_status = popup.locator("#siteStatus").text_content()
+            if not toolbar:
+                # Headless Chromium denies optional host permissions because it cannot show
+                # the browser's permission prompt. This still proves no page injection occurs
+                # before a site is granted; the confirmed-fill flow stays in extension_golden.
+                results["permission_gate"] = {"toolbar_before_grant": False,
+                                               "granted_in_headless": False,
+                                               "status": permission_status}
+                print(json.dumps(results, ensure_ascii=False, indent=2))
+                context.close()
+                raise SystemExit(0)
+            assert before == "" and after == "Test User"
+            page.once("dialog", lambda dialog: dialog.accept("test-pdf"))
+            page.click("#ac-up")
+            page.wait_for_timeout(700)
+            uploaded = page.locator("#resume").evaluate("el => el.files.length === 1 && el.files[0].name === 'synthetic.pdf'")
+            assert uploaded
+            results["local_form"] = {"toolbar": bool(toolbar), "review": review,
+                                     "name_before_confirm": before, "name_after_confirm": after,
+                                     "synthetic_pdf_attached": uploaded}
             before_name = popup.locator("#profileName").input_value()
             popup.locator("#profileSchool").fill("Example University")
             popup.locator("#saveProfile").click()

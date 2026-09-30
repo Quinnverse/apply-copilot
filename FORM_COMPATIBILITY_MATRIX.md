@@ -30,3 +30,7 @@ ATS systems (Workday, Greenhouse, Lever and others): **UNVERIFIED**. A platform 
 | Synthetic dynamically rendered two-step form | Step 1: 1; Step 2: 1 | 1 per step | Name then email written after separate confirmations | `tests/extension_golden.py`; no submit; represents only light-DOM step replacement. |
 
 Screenshots with synthetic data: [Greenhouse](evidence/greenhouse-after-fill.png), [Lever](evidence/lever-after-fill.png). The platform observations apply to these specific pages on this date, not every job on each ATS.
+
+## Permission-gated extension check (2026-09-30)
+
+The unpacked MV3 extension was loaded in a disposable Edge profile. Before a site permission was granted, the local synthetic form had no toolbar and the popup correctly stated that `127.0.0.1` was not allowed. Headless Chromium cannot approve the optional-host browser prompt, so post-grant toolbar injection remains a manual-browser check.
