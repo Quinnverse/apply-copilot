@@ -40,4 +40,12 @@ with tempfile.TemporaryDirectory() as tmp:
         pass
     else:
         raise AssertionError("stale data directory was accepted")
+    (module.PKG / "data").rmdir()
+    (module.PKG / "static" / "assistant.bookmarklet.js").write_text("PRIVATE", encoding="utf-8")
+    try:
+        module.main()
+    except SystemExit:
+        pass
+    else:
+        raise AssertionError("stale generated bookmarklet was accepted")
     print("deployment package excludes user data: PASS")

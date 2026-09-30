@@ -10,7 +10,8 @@ MIRROR="https://mirrors.cloud.tencent.com/pypi/simple"
 
 echo "== [1/5] 校验部署包与令牌配置 =="
 [ -f "$DEPLOY_SRC/app/server.py" ] && [ -f "$DEPLOY_SRC/copilot.service" ] || { echo "部署包不完整" >&2; exit 1; }
-[ ! -e "$DEPLOY_SRC/data" ] && [ ! -e "$DEPLOY_SRC/skill/state" ] || { echo "拒绝包含用户数据的部署包" >&2; exit 1; }
+[ ! -e "$DEPLOY_SRC/data" ] && [ ! -e "$DEPLOY_SRC/skill/state" ] && \
+  [ ! -e "$DEPLOY_SRC/static/assistant.bookmarklet.js" ] || { echo "拒绝包含用户数据的部署包" >&2; exit 1; }
 [ -f "$DEST/.env" ] || { echo "缺少 $DEST/.env" >&2; exit 1; }
 [ -f "$DEST/data/tokens.json" ] || { echo "缺少 $DEST/data/tokens.json" >&2; exit 1; }
 [ "$(stat -c %a "$DEST/.env")" = "600" ] || { echo ".env 权限必须为 600" >&2; exit 1; }

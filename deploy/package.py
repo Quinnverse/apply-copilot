@@ -33,8 +33,9 @@ def cp(src: Path, dst: Path):
 
 def main():
     # 拒绝复用旧版含个人资料的部署目录，避免旧文件混入新包。
-    if (PKG / "data").exists() or (PKG / "skill" / "state").exists():
-        raise SystemExit("旧部署目录含数据/state；请先将其移出 deploy/package 再重新打包")
+    if any(path.exists() for path in (PKG / "data", PKG / "skill" / "state",
+                                      PKG / "static" / "assistant.bookmarklet.js")):
+        raise SystemExit("旧部署目录含数据/state/生成书签；请先将其移出 deploy/package 再重新打包")
     required = ([PROJ / f for f in APP_FILES] +
                 [PROJ / "static" / f for f in STATIC_FILES] +
                 [SKILL / "scripts" / "apply.py"] +
