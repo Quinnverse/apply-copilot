@@ -5,8 +5,8 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/copilot
-# venv 里的 uvicorn，绑定 0.0.0.0:8787（仅服务器；本地开发请保持 127.0.0.1）
-ExecStart=/opt/copilot/venv/bin/uvicorn --host 0.0.0.0 --port 8787 server:app
+# 仅供同机 HTTPS 反向代理访问，避免直连明文后端。
+ExecStart=/opt/copilot/venv/bin/uvicorn --host 127.0.0.1 --port 8787 server:app
 Restart=always
 RestartSec=3
 # ---- 云端环境变量 ----

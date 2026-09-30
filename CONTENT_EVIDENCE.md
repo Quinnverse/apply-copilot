@@ -15,6 +15,7 @@ Date: 2026-09-30. Use only these recorded observations in Quinnverse material; d
 | Damaged token table could disable authentication | `server.py` previously guarded APIs only when `load_tokens()` returned entries | Auth now stays required after a configured token table is malformed, empty, or removed; `tests/tenant_isolation.py` verifies 401 responses. |
 | Generated bookmarklet embedded profile values in a public static path | `gen_bookmarklet.py` and the previous `/static` mount | `/static/assistant.bookmarklet.js` now returns 404; the generated file is excluded from Git and deployment packages. Historic distribution of generated copies was not verified. |
 | Separate users needed an actual isolation check | `tests/tenant_isolation.py` with disposable token A and B | Profile, resume, field memory, and application records stay in separate tenant directories in the local test. Live cloud isolation remains unverified. |
+| Old deployment could overwrite user data and expose a token | Previous `deploy/package.py` copied local profile/PDF/state; `deploy_server.sh` replaced server data, printed a token, and opened port 8787 | Packaging now rejects old data directories and copies code only; deployment preserves server data, checks auth, and binds loopback. The new script has not been run on the server. |
 
 Screenshots after synthetic fill: [Greenhouse](evidence/greenhouse-after-fill.png), [Lever](evidence/lever-after-fill.png). The pages and counts can change over time. Both images contain only synthetic applicant data.
 
