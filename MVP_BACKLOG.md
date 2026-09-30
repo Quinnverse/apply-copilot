@@ -32,7 +32,7 @@ Keep `profile.job.json` and existing kit. Fix backend startup, then extension pr
 - P0 3 closed for native controls: scanned element binding, option verification and failure count. A real Greenhouse false positive led to a conservative long-question guard.
 - P1 1 closed for tested controlled inputs through native setter plus events.
 - P1 2 partial: native radio/month/date supported in narrow cases; custom widgets remain manual.
-- P1 3 partial: unused manifest permissions removed, CORS narrowed and popup HTML injection removed. `<all_urls>` remains and should be reduced before broad distribution.
+- P1 3 closed in code: the manifest now has no always-on content script or `<all_urls>` host permission. The popup asks the user to enable the current HTTP(S) site, then injects with `scripting`; the background reinjects only after a user-granted site reload. `tests/extension_permissions.py` verifies the manifest gate. A manual Chrome/Edge permission-flow check remains before broad distribution.
 - P1 4 partial: manual rescan works and toolbar reinjects after site DOM replacement; multi-step applications are still unverified.
 
 Next blocking work for unassisted distribution: test more ATS and multi-step pages with real user data under consent, add clear handling for Chinese names split across first/last fields, package the local backend/extension setup, and verify actual PDF upload on supported ATS pages. These were deliberately not represented as complete by local/synthetic tests.

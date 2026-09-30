@@ -4,6 +4,36 @@ function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');cl
 function send(type, extra){return new Promise(res=>chrome.runtime.sendMessage({type, ...extra}, r=>res(r)));}
 let currentProfile = {};
 
+function chromeCall(fn, arg){
+  return new Promise(resolve => fn(arg, value => resolve({value, error: chrome.runtime.lastError && chrome.runtime.lastError.message})));
+}
+async function activeWebTab(){
+  const r=await chromeCall(chrome.tabs.query,{active:true,currentWindow:true});
+  const tab=(r.value||[])[0];
+  if(!tab || !/^https?:\/\//.test(tab.url||'')) return null;
+  const url=new URL(tab.url);
+  return {tab, origin:`${url.protocol}//${url.hostname}/*`, label:url.hostname};
+}
+async function refreshSitePermission(){
+  const site=await activeWebTab();
+  const status=$('#siteStatus'), button=$('#enableSite');
+  if(!site){status.textContent='请先打开一个招聘网站页面，再点击扩展图标。'; button.disabled=true; return;}
+  const has=await chromeCall(chrome.permissions.contains,{origins:[site.origin]});
+  if(has.value){status.textContent=`已允许 ${site.label}；此页可使用填表助手。`; button.textContent='重新加载当前页助手';}
+  else {status.textContent=`尚未允许 ${site.label}。仅在你点击后才会向该网站注入助手。`; button.textContent='在当前网站启用填表助手';}
+}
+
+$('#enableSite').onclick=async()=>{
+  const site=await activeWebTab();
+  if(!site){toast('请先打开招聘网站页面');return;}
+  const permission=await chromeCall(chrome.permissions.request,{origins:[site.origin]});
+  if(!permission.value){$('#siteStatus').textContent='未授予网站权限；不会读取或填充该页。';return;}
+  const injected=await chromeCall(chrome.scripting.executeScript,{target:{tabId:site.tab.id},files:['content.js']});
+  if(injected.error){$('#siteStatus').textContent='启用失败：'+injected.error;return;}
+  $('#siteStatus').textContent=`已在 ${site.label} 启用。请在网页右下角打开助手。`;
+  $('#enableSite').textContent='重新加载当前页助手';
+};
+
 async function loadProfile(){
   const r=await send('getProfile');
   if(!r || r.error){$('#profileStatus').textContent='后端未连接：'+((r&&r.error)||'无响应');return;}
@@ -33,6 +63,7 @@ $('#saveProfile').onclick=async()=>{
 };
 
 async function init(){
+  await refreshSitePermission();
   await loadProfile();
   const q = await send('getQueue');
   const resumes = await send('getResumes');

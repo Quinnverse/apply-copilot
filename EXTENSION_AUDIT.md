@@ -16,7 +16,7 @@
 | iframe / shadow DOM | Top-frame light DOM only (`all_frames` not set). Both unsupported. |
 | ATS support | No platform-specific test evidence in repository; do not claim any supported ATS. |
 | Submission | No automatic submit. “Record” is a separate user click. |
-| Permissions/privacy | `<all_urls>` causes toolbar injection everywhere. `tabs`, `activeTab`, `scripting` appear unused; `storage` is used. Local API accepts arbitrary origins and has no auth when no token is configured. Popup renders remote strings with `innerHTML`. |
+| Permissions/privacy | The MV3 manifest has no always-on content script and no `<all_urls>` host permission. The user must grant the current HTTP(S) site in the popup before `content.js` is injected; later pages on that granted site reinject through the service worker. Local no-token mode remains single-user. |
 
 Main product gap: user sees no “found N / reliable M / confirm K / manual R” review before writes. The present Fill button changes every matched field immediately.
 
@@ -25,5 +25,5 @@ Main product gap: user sees no “found N / reliable M / confirm K / manual R”
 - Toolbar now shows detected, fillable, confirm and manual counts with a checkbox per suggestion. No field changes until “填充勾选字段” is clicked.
 - Suggestions are bound to scanned DOM elements, avoiding duplicate CSS selector collisions. Writes use native input/textarea setters and verify native select options. Radio groups and ISO month/date inputs have narrow support. Unsupported/custom controls remain manual.
 - Popup can edit the existing `profile.job.json` basic and education fields. The background still bridges the same local API.
-- Manifest removed unused `activeTab` and `scripting` permissions. `<all_urls>` remains for in-page toolbar injection and should be revisited before broad distribution.
+- 2026-09-30: replaced the `<all_urls>` content script with per-site optional host access. `scripting` is now used for injection after the popup's explicit permission request.
 - Live loaded-extension checks: Greenhouse Boldly form 46 detected / 4 filled, Lever form 5 detected / 3 filled; no submit. See `FORM_COMPATIBILITY_MATRIX.md`.

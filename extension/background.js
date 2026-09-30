@@ -90,5 +90,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   return true; // 保持消息通道开放，等待异步响应
 });
 
+// 仅在用户先于 popup 明确允许过的网站，后续同站页面完成加载后再注入。
+// 未获允许的网站没有内容脚本，也不会把页面字段发送到后端。
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status !== "complete" || !/^https?:\/\//.test(tab.url || "")) return;
+  const url = new URL(tab.url);
+  const origin = `${url.protocol}//${url.hostname}/*`;
+  chrome.permissions.contains({ origins: [origin] }, (granted) => {
+    if (!granted) return;
+    chrome.scripting.executeScript({ target: { tabId }, files: ["content.js"] }).catch(() => {});
+  });
+});
+
 // 启动提示（仅本机）
 console.log("[网申助手] background ready，后端", BASE);
